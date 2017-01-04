@@ -1,4 +1,4 @@
-![logo][] LiquidWare
+![logo][] LiquidWare Labs Inc.
 ====================
 
 Welcome to the Liquidware GitHub Community!<br>
@@ -17,9 +17,7 @@ Get ProfileUnity™
 
 You can download and install a PowerShell package for any of the following platforms.
 
-| Downloads              |
-| ---------------------- |
-| [Liquidware Labs Downloads] [Downloads]   |
+[Liquidware Labs Downloads] [Downloads]
 
 
 [Dowloads]: http://www.liquidwarelabs.com/download
