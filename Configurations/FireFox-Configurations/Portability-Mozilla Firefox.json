@@ -1,0 +1,47 @@
+{
+  "DateExported": "2016-08-04T15:24:01.9483358Z",
+  "ProuVersion": "6.5.6037",
+  "Configurations": [],
+  "Filters": [],
+  "PortabilityRulesets": [
+    {
+      "Comments": "",
+      "FilesystemRules": [
+        {
+          "Folder": 12,
+          "Operation": 0,
+          "Path": "Mozilla\\Firefox\\Profiles"
+        },
+        {
+          "Folder": 12,
+          "Operation": 2,
+          "Path": "Mozilla\\Firefox\\Profiles\\*default*\\Cache2"
+        },
+        {
+          "Folder": 12,
+          "Operation": 2,
+          "Path": "Mozilla\\Firefox\\Profiles\\*default*\\cache"
+        },
+        {
+          "Folder": 0,
+          "Operation": 0,
+          "Path": "Mozilla\\Firefox"
+        },
+        {
+          "Folder": 0,
+          "Operation": 2,
+          "Path": "Mozilla\\Firefox\\Chash Reports"
+        }
+      ],
+      "Name": "Mozilla Firefox",
+      "RegistryRules": [],
+      "CreatedBy": "administrator",
+      "DateCreated": "2016-06-07T14:11:58Z",
+      "DateLastModified": "2016-06-27T17:40:34.016Z",
+      "Disabled": false,
+      "Id": "5756d62e08845e0600c4a2b5",
+      "LastModifiedBy": "administrator"
+    }
+  ],
+  "Templates": []
+}
