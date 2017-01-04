@@ -23,7 +23,7 @@ You can download and install a PowerShell package for any of the following platf
 
 
 [Dowloads]: http://www.liquidwarelabs.com/download
-[logo]: 
+[logo]: https://avatars3.githubusercontent.com/u/24906944?v=3&s=200
 
 
 
