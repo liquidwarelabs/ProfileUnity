@@ -4,9 +4,9 @@ Description <br>
 ProfileUnity Configurations and Regkeys for Chrome<br>
 
 Attached in this repository is:<br>
-Portability-Google Chrome v7.json (portability ruleset) [chromeport]<br>
-Chrome Default.reg (sets default browser) [chromereg] <br> 
-ModuleItems- Reg- Google Chrome Update disable .json (disabled auto update) [chromemod]<br> 
+Portability-Google Chrome v8.json (portability ruleset) [Portability-Google Chrome v8.json][chromeport]<br>
+Chrome Default.reg (sets default browser) [Chrome Default.reg][chromereg] <br> 
+ModuleItems- Reg- Google Chrome Update disable .json (disabled auto update) [ModuleItems - Reg - Google Chrome Update disable.json][chromemod]<br> 
 
 How to Use<br>
 Import into ProfileUnity<br>
