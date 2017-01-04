@@ -8,9 +8,11 @@ LiquidWare an industry leader and pioneer in desktop virtualization solutions fo
 New to ProfileUnity™?
 ------------------
 
-If you are new to ProfileUnity™ and would like to learn more, we recommend reviewing the [getting started][] documentation.
+If you are new to ProfileUnity™ and would like to learn more, we recommend reviewing the [getting started][] documentation. <br>
+There is also [Video Training] you can review as well.
 
 [getting started]: https://liquidwarelabs.zendesk.com/hc/en-us/articles/210641943-ProfileUnity-with-FlexApp-Documentation-
+[Video Training]: http://training.liquidwarelabs.com/products/profileunity
 
 Get ProfileUnity™
 --------------
