@@ -1,14 +1,18 @@
-mkdir c:\UserShare
-net share UserShare="C:\UserShare" /GRANT:"authenticated users",FULL /Grant:"Domain admins",Full /Grant:"authenticated users",Full
-Icacls c:\UserShare /inheritance:r /grant:r "Domain Users":(S,RD,AD) /grant:r "Domain Admins":(OI)(CI)(F) /grant:r "creator owner":(OI)(CI)(IO)(F) /grant:r "authenticated users":(S,RD,AD) /grant:r "system":(OI)(CI)(F)
+REM Adjust variables for needed folder paths
+SET usershare=c:\UserShare
+SET profileunity=c:\profileUnity
 
-mkdir c:\ProfileUnity
-mkdir c:\ProfileUnity\ClientTools
-mkdir c:\ProfileUnity\User
-mkdir c:\ProfileUnity\Machine
-mkdir c:\ProfileUnity\FlexApps
-net share profileUnity="C:\ProfileUnity" /GRANT:"authenticated users",read /Grant:"Domain admins",Full /Grant:"Domain Users",read
-Icacls c:\ProfileUnity /inheritance:r /grant:r "Domain Users":(OI)(CI)(RX) /grant:r "Domain Admins":(OI)(CI)(F) /grant:r "authenticated users":(OI)(CI)(RX) /grant:r "system":(OI)(CI)(F)
+mkdir "%usershare%"
+net share UserShare="%usershare%" /GRANT:"authenticated users",FULL /Grant:"Domain admins",Full /Grant:"authenticated users",Full
+Icacls "%usershare%" /inheritance:r /grant:r "Domain Users":(S,RD,AD) /grant:r "Domain Admins":(OI)(CI)(F) /grant:r "creator owner":(OI)(CI)(IO)(F) /grant:r "authenticated users":(S,RD,AD) /grant:r "system":(OI)(CI)(F)
+
+mkdir "%profileunity%"
+mkdir "%profileunity%\ClientTools"
+mkdir "%profileunity%\User"
+mkdir "%profileunity%\Machine"
+mkdir "%profileunity%\FlexApps"
+net share profileUnity="%profileunity%" /GRANT:"authenticated users",read /Grant:"Domain admins",Full /Grant:"Domain Users",read
+Icacls "%profileunity%" /inheritance:r /grant:r "Domain Users":(OI)(CI)(RX) /grant:r "Domain Admins":(OI)(CI)(F) /grant:r "authenticated users":(OI)(CI)(RX) /grant:r "system":(OI)(CI)(F)
 
 Echo off
 Echo ---GPO startup path--- >> %userprofile%\desktop\ProfileUnityPaths.txt
