@@ -1,11 +1,11 @@
 {
-  "DateExported": "2016-12-07T20:41:40.3600764Z",
-  "ProuVersion": "6.5.6116",
+  "DateExported": "2017-03-16T12:25:56.0034769Z",
+  "ProuVersion": "6.5.6236",
   "Configurations": [],
   "Filters": [],
   "PortabilityRulesets": [
     {
-      "Comments": "v8",
+      "Comments": "v9",
       "FilesystemRules": [
         {
           "Folder": 12,
@@ -56,15 +56,60 @@
           "Folder": 12,
           "Operation": 2,
           "Path": "google\\Chrome\\User Data\\Default\\Storage"
+        },
+        {
+          "Folder": 12,
+          "Operation": 2,
+          "Path": "Google\\Chrome\\User Data\\Default\\Pepper Data"
+        },
+        {
+          "Folder": 12,
+          "Operation": 2,
+          "Path": "Google\\Chrome\\User Data\\WidevineCDM"
+        },
+        {
+          "Folder": 12,
+          "Operation": 2,
+          "Path": "Google\\Chrome\\User Data\\SwiftShader"
+        },
+        {
+          "Folder": 12,
+          "Operation": 2,
+          "Path": "Google\\Chrome\\User Data\\pnacl"
+        },
+        {
+          "Folder": 12,
+          "Operation": 2,
+          "Path": "Google\\Chrome\\User Data\\PepperFlash"
+        },
+        {
+          "Folder": 12,
+          "Operation": 2,
+          "Path": "Google\\Chrome\\User Data\\Subresource Filter"
+        },
+        {
+          "Folder": 12,
+          "Operation": 2,
+          "Path": "Google\\Chrome\\User Data\\Safe*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 2,
+          "Path": "Google\\Chrome\\User Data\\SwReporter"
+        },
+        {
+          "Folder": 12,
+          "Operation": 2,
+          "Path": "Google\\Chrome\\User Data\\Profile*"
         }
       ],
-      "Name": "Google Chrome v8",
+      "Name": "Google Chrome v9",
       "RegistryRules": [],
       "CreatedBy": "administrator",
-      "DateCreated": "2016-10-31T19:41:18Z",
-      "DateLastModified": "2016-12-07T20:41:38.013Z",
+      "DateCreated": "2017-03-02T18:05:20Z",
+      "DateLastModified": "2017-03-16T12:25:52.645Z",
       "Disabled": false,
-      "Id": "58179e5e08845e060cb54412",
+      "Id": "58b85ee008845e084c8f7be2",
       "LastModifiedBy": "administrator"
     }
   ],
