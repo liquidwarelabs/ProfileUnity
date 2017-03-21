@@ -152,7 +152,7 @@ if ($answer -eq $False)
 {Write-Host "Save Canceled" -ForegroundColor "red" -BackgroundColor "yellow"}
 else 
 {
-Invoke-WebRequest https://"$servername":8000/api/portability -ContentType "application/json" -Method Post -WebSession $session -Body($Currentconfig | ConvertTo-Json -Depth 10)
+Invoke-WebRequest https://"$servername":8000/api/portability -ContentType "application/json" -Method Post -WebSession $session -Body($Currentportrule | ConvertTo-Json -Depth 10)
 }
 }
 
@@ -163,7 +163,7 @@ if ($answer -eq $False)
 {Write-Host "Save Canceled" -ForegroundColor "red" -BackgroundColor "yellow"}
 else 
 {
-Invoke-WebRequest https://"$servername":8000/api/filter -ContentType "application/json" -Method Post -WebSession $session -Body($Currentconfig | ConvertTo-Json -Depth 10)
+Invoke-WebRequest https://"$servername":8000/api/filter -ContentType "application/json" -Method Post -WebSession $session -Body($Currentfilter | ConvertTo-Json -Depth 10)
 }
 }
 
