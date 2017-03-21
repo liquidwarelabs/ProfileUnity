@@ -108,7 +108,7 @@ Import Printer List from print server to create ProU Filters
 
 | OS Version  | Verified |
 | ------------- | ------------- |
-|Windows 10 | No |
+|Windows 10 | Yes |
 |Windows Server 2012 | No |
 |Windows Server 2012 R2 | Yes |
 |Windows Server 2008 R2 | Yes |
