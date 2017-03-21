@@ -1,0 +1,52 @@
+ProfileUnity Powershell Commands v1
+
+connect-ProfileUnityServer
+Type in command and follow the prompts
+
+get-ProUconfigs
+Type in command get responce
+
+get-ProUFilters
+Type in command get responce
+
+get-ProUFlexapps
+Type in command get responce
+
+get-ProUPortRules
+Type in command get responce
+
+load-proUconfig([string]$name)
+Example: load-proUconfig -name "configuration name"
+to see configuration type $CurrentConfig
+
+load-proUPortRule([string]$name)
+Example: load-proUPortRule -name "Port Rule Name"
+to see configuration type $CurrentPortRule
+
+load-proUfilter([string]$name)
+Example: load-proUfilter -name "Filter Name"
+to see configuration type $Currentfilter
+
+Save-ProUConfig
+Type in command get responce
+
+Save-ProUPortRule
+Type in command get responce
+
+Save-ProUFilter
+Type in command get responce
+
+export-proUconfig([string]$name, $savepath)
+Example: export-proUconfig -name "configuration name" -savepath "c:\Path\"
+The backslash at the end of the path is important
+
+Export-ProUConfigAll ($savepath)
+Example: Export-ProUConfigAll -savepath "c:\Path\"
+The backslash at the end of the path is important
+
+Import-ProuConfig
+Type in command and follow the prompts
+
+Import-ProuConfigAll ($source)
+Example: Import-ProuConfigAll -source "c:\Path\"
+The backslash at the end of the path is important
