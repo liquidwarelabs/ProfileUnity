@@ -46,7 +46,19 @@ REM Optional Install of ProfileUnity client
 REM %systemroot%\system32\cmd.exe /c \\EDITME\profileunity\clienttools\LwL.ProfileUnity.Client.Startup.exe
 ````
 
-[localgpozip]: https://github.com/liquidwarelabs/Profileunity/raw/master/
+Once Edited Run "LocalInstallProU.bat" as administrator on the local machine. This will copy the directory into the local "temp" folder and run from there.<br>
+
+Side notes:<br>
+If you don't see the logoff script on your configuration, Edit the version number to a higher number. Then rerun the script:<br>
+````
+ADM
+	GPT.ini
+	
+	Version=300000
+````
+
+
+[localgpozip]: https://github.com/liquidwarelabs/ProfileUnity/blob/master/Scripts/Create%20Local%20GPO/LocalGPO.zip
 
 
 
