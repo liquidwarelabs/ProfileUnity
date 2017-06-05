@@ -25,18 +25,18 @@ Set-ExecutionPolicy -ExecutionPolicy Unrestricted
 ````
 - **Edit Backup Script**
 
-- 1.	Open “BackupDB.ps1”
-- 2.	Edit the following lines
-- a.	[string]$global:servername= "ProU Server Name"
-- b.	$user= "ProU User"
-- c.	$pass=Get-Content c:\temp\Password.txt | ConvertTo-SecureString
-- d.	[string]$global:savepath= "c:\temp\"
+- Open “BackupDB.ps1”
+- **Edit the following lines**
+- [string]$global:servername= "ProU Server Name"
+- $user= "ProU User"
+- $pass=Get-Content c:\temp\Password.txt | ConvertTo-SecureString
+- [string]$global:savepath= "c:\temp\"
 
 - **Make Task**
-- 1.	On ProfileUnity server start “Task Scheduler”
-- 2.	Create new task
-- 3.	Follow the instruction specified on this site.
-- a.	https://community.spiceworks.com/how_to/17736-run-powershell-scripts-from-task-scheduler
+- On ProfileUnity server start “Task Scheduler”
+- Create new task
+- **Follow the instruction specified on this site.**
+- https://community.spiceworks.com/how_to/17736-run-powershell-scripts-from-task-scheduler
 
 
 Script Code MakeSecurePasswordfile.ps1:
