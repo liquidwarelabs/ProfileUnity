@@ -7,7 +7,10 @@ This Is a powershell script that will backup the items in the ProfileUnity Web C
 
 **Prerequisites** <br>
 This was built on the latest version of PowerShell.<br>
-https://www.microsoft.com/en-us/download/details.aspx?id=50395
+https://www.microsoft.com/en-us/download/details.aspx?id=50395 <br>
+
+Download Zip with Backup Script<br>
+https://github.com/liquidwarelabs/ProfileUnity/blob/master/PowerTools/ProfileUnity%20Backup/Backup%20DB.zip?raw=true
 
 To load 
 - **copy the PS1 down into a folder on the profileunity server.**
