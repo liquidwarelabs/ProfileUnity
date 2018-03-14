@@ -10,13 +10,12 @@ This was built on the latest version of PowerShell.<br>
 https://www.microsoft.com/en-us/download/details.aspx?id=50395 <br>
 
 Download Zip with Backup Script<br>
-Link to Zip
-
+https://github.com/liquidwarelabs/ProfileUnity/blob/master/PowerTools/ProfileUnity%20Filter%20Creation%20from%20Template/ProfileUnity%20Filter%20Creation%20from%20Template.zip
 To load 
 - **copy the PS1 down into a folder on the profileunity server.**
 - **Edit the CSV with the items needed**
 - 1.	Follow guide to set the fields correctly.
-- 2.	GuideLink
+- 2.	https://github.com/liquidwarelabs/ProfileUnity/blob/master/PowerTools/ProfileUnity%20Filter%20Creation%20from%20Template/Creating%20a%20Filter.pdf
 
 - **In PowerShell type**:
 ````
