@@ -10,7 +10,7 @@ This was built on the latest version of PowerShell.<br>
 https://www.microsoft.com/en-us/download/details.aspx?id=50395 <br>
 
 Download Zip with Script<br>
-ZipLink <br>
+https://github.com/liquidwarelabs/ProfileUnity/raw/master/PowerTools/Printer%20Printer%20Creation%20from%20Template/Printer%20Add.zip <br>
 
 **To load** <br>
 
