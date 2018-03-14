@@ -1,3 +1,36 @@
+## ProfileUnity Backup <br>
+
+**Description** <br>
+This Is a powershell script that will pull filter options from a CSV and input them into the ProfileUnity Web Console.<br>
+
+**How to Use** <br>
+
+**Prerequisites** <br>
+This was built on the latest version of PowerShell.<br>
+https://www.microsoft.com/en-us/download/details.aspx?id=50395 <br>
+
+Download Zip with Backup Script<br>
+Link to Zip
+
+To load 
+- **copy the PS1 down into a folder on the profileunity server.**
+- **Edit the CSV with the items needed**
+- 1.	Follow guide to set the fields correctly.
+- 2.	GuideLink
+
+- **In PowerShell type**:
+````
+Run “New-Filter.ps1”
+Follow prompts
+````
+- **If you get an Execution Policy error.**
+````
+Set-ExecutionPolicy -ExecutionPolicy Unrestricted
+````
+
+
+Script Code New-Filter.ps1:
+````
 ##login Function
 
 function connect-ProfileUnityServer{
@@ -62,3 +95,23 @@ Connections=$item.Connections;
 Invoke-WebRequest https://"$servername":8000/api/filter -ContentType "application/json" -Method Post -WebSession $session -Body($NewFilter | ConvertTo-Json -Depth 10)
 
 }
+
+
+````
+
+
+
+
+| OS Version  | Verified |
+| ------------- | ------------- |
+|Windows 10 | Yes |
+|Windows Server 2012 | No |
+|Windows Server 2012 R2 | Yes |
+|Windows Server 2008 R2 | Yes |
+|Windows Server 2008 | No |
+|Windows Server 2003 | No |
+|Windows 8 | No |
+|Windows 7 | Yes |
+|Windows Vista | No |
+|Windows XP | No |
+|Windows 2000 | No |
