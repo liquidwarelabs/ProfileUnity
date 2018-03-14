@@ -12,7 +12,8 @@ https://www.microsoft.com/en-us/download/details.aspx?id=50395 <br>
 Download Zip with Script<br>
 https://github.com/liquidwarelabs/ProfileUnity/blob/master/PowerTools/ProfileUnity%20Filter%20Creation%20from%20Template/ProfileUnity%20Filter%20Creation%20from%20Template.zip <br>
 
-To load 
+**To load** <br>
+
 - **copy the PS1 down into a folder on the profileunity server.**
 - **Edit the CSV with the items needed**
 - 1.	Follow guide to set the fields correctly.
