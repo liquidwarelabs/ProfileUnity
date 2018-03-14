@@ -9,8 +9,9 @@ This Is a powershell script that will pull filter options from a CSV and input t
 This was built on the latest version of PowerShell.<br>
 https://www.microsoft.com/en-us/download/details.aspx?id=50395 <br>
 
-Download Zip with Backup Script<br>
-https://github.com/liquidwarelabs/ProfileUnity/blob/master/PowerTools/ProfileUnity%20Filter%20Creation%20from%20Template/ProfileUnity%20Filter%20Creation%20from%20Template.zip
+Download Zip with Script<br>
+https://github.com/liquidwarelabs/ProfileUnity/blob/master/PowerTools/ProfileUnity%20Filter%20Creation%20from%20Template/ProfileUnity%20Filter%20Creation%20from%20Template.zip <br>
+
 To load 
 - **copy the PS1 down into a folder on the profileunity server.**
 - **Edit the CSV with the items needed**
