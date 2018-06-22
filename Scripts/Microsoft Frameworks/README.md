@@ -1,11 +1,15 @@
 # Frameworks c++ and Dot.net 3.5
 
-Framework list
-Manual Install
-sxs\microsoft-windows-netfx3-ondemand-package.cab
+Download Link
 
+https://www.dropbox.com/s/pceifz9ru9m7e5j/FrameWorks.zip?dl=0
+
+Framework list
 Installed with All.Bat (Run As Admin)
 
+sxs\microsoft-windows-netfx3-ondemand-package.cab
+jsharp\vjredist.exe
+jsharp\vjredist64.exe
 2005\vcredist_x64.exe
 2005\vcredist_x86.exe
 2008\vcredist_x64.exe
@@ -30,4 +34,3 @@ Installed with All.Bat (Run As Admin)
 2015\mu_visual_cpp_redistributable_for_visual_studio_2015_x86_6837977.exe
 2017\en_visual_cpp_redistributable_for_visual_studio_2017_x64_10051449.exe
 2017\en_visual_cpp_redistributable_for_visual_studio_2017_x86_10050228.exe
-
