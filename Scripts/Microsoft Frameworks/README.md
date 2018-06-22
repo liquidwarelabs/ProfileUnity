@@ -1,11 +1,12 @@
-# Frameworks c++ and Dot.net 3.5
+# Frameworks c++, jsharp and Dot.net 3.5
 
 Download Link
 
 https://www.dropbox.com/s/pceifz9ru9m7e5j/FrameWorks.zip?dl=1
 
 Framework list
-Installed with All.Bat (Run As Admin)
+Installed with All.Bat (Run As Admin) <br>
+```
 sxs\microsoft-windows-netfx3-ondemand-package.cab
 jsharp\vjredist.exe
 jsharp\vjredist64.exe
@@ -33,3 +34,4 @@ jsharp\vjredist64.exe
 2015\mu_visual_cpp_redistributable_for_visual_studio_2015_x86_6837977.exe
 2017\en_visual_cpp_redistributable_for_visual_studio_2017_x64_10051449.exe
 2017\en_visual_cpp_redistributable_for_visual_studio_2017_x86_10050228.exe
+```
