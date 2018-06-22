@@ -2,7 +2,7 @@
 
 Download Link
 
-https://www.dropbox.com/s/pceifz9ru9m7e5j/FrameWorks.zip?dl=0
+https://www.dropbox.com/s/pceifz9ru9m7e5j/FrameWorks.zip?dl=1
 
 Framework list
 Installed with All.Bat (Run As Admin)
