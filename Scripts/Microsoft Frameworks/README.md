@@ -6,7 +6,6 @@ https://www.dropbox.com/s/pceifz9ru9m7e5j/FrameWorks.zip?dl=1
 
 Framework list
 Installed with All.Bat (Run As Admin)
-
 sxs\microsoft-windows-netfx3-ondemand-package.cab
 jsharp\vjredist.exe
 jsharp\vjredist64.exe
