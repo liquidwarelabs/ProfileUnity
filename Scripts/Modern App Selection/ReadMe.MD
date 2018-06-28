@@ -6,11 +6,11 @@ Powershell script to selectivly load which modern apps you wnat to load.<br>
 How to Use<br>
 
 Set the execution policy<br>
+
 ```
 Set-ExecutionPolicy -ExecutionPolicy Unrestricted
 ```
 Run Script<br>
-```
 
 Run this command with admin rights to get the app name listings
 
