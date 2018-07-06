@@ -1,16 +1,18 @@
 # Selectivly choose which Modern apps to load
 
 Description <br>
-Powershell script to selectivly load which modern apps you wnat to load.<br>
+Powershell script to selectivly load which modern apps you want to load for new user logins<br>
 
 How to Use<br>
 
+DIsable appreadiness services in your master image<br>
+
 Set the execution policy<br>
+
 ```
 Set-ExecutionPolicy -ExecutionPolicy Unrestricted
 ```
 Run Script<br>
-```
 
 Run this command with admin rights to get the app name listings
 
