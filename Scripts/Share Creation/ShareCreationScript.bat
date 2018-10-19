@@ -20,19 +20,19 @@ Echo \\%computername%\profileunity\clienttools\LwL.ProfileUnity.Client.Logoff.ex
 
 Echo off
 Echo ---GPO User INI path--- >> %userprofile%\desktop\ProfileUnityPaths.txt
-Echo \\%computername%\profileunity\Running\ >> %userprofile%\desktop\ProfileUnityPaths.txt
+Echo \\%computername%\profileunity\User\ >> %userprofile%\desktop\ProfileUnityPaths.txt
 
 Echo off
 
 Echo ---GPO Computer INI path--- >> %userprofile%\desktop\ProfileUnityPaths.txt
-Echo \\%computername%\profileunity\startup\ >> %userprofile%\desktop\ProfileUnityPaths.txt
+Echo \\%computername%\profileunity\Machine\ >> %userprofile%\desktop\ProfileUnityPaths.txt
 
 Echo off
 ECho ---User share--- >> %userprofile%\desktop\ProfileUnityPaths.txt
-Echo "\\%computername%\UserShare\%username%" >> %userprofile%\desktop\ProfileUnityPaths.txt
+Echo "\\%computername%\ProfileShare\%username%" >> %userprofile%\desktop\ProfileUnityPaths.txt
 
 Echo off
 Echo ---Profile Disk Share--- >> %userprofile%\desktop\ProfileUnityPaths.txt
-Echo "\\%computername%\UserShare\%username%\VHD-ProfileDisk\%username%.vhd" >> %userprofile%\desktop\ProfileUnityPaths.txt
+Echo "\\%computername%\ProfileShare\%username%\VHD-ProfileDisk\%username%.vhd" >> %userprofile%\desktop\ProfileUnityPaths.txt
 
 exit
