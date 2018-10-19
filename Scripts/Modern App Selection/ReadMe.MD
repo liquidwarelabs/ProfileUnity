@@ -5,7 +5,7 @@ Powershell script to selectivly load which modern apps you want to load for new 
 
 How to Use<br>
 
-DIsable appreadiness services in your master image<br>
+Disable appreadiness services in your master image, use Start-fix.reg keys if Optimization tool breaks startmenu registration or do not disable the privacy options in your optimization.<br>
 
 Set the execution policy<br>
 
