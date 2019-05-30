@@ -1,0 +1,132 @@
+{
+  "DateExported": "2019-05-30T19:21:10.1945862Z",
+  "ProuVersion": "6.8.2.7074",
+  "Configurations": [],
+  "Filters": [],
+  "PortabilityRulesets": [
+    {
+      "Comments": "",
+      "FilesystemRules": [
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "google\\Chrome\\User Data\\*Local State*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "google\\Chrome\\User Data\\*First Run*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "google\\Chrome\\User Data\\*Last Version*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Preferences*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*History*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Cookies*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Favicons*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Bookmarks*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Last Tabs*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Last Session*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Visited Links*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Current Session*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Current Tabs*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Login Data*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Network Action Predictor*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Network Persistent State*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Secure Preferences*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Shortcuts*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Top Sites*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Translate Ranker Model*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*TransportSecurity*"
+        },
+        {
+          "Folder": 12,
+          "Operation": 1,
+          "Path": "Google\\Chrome\\User Data\\Default\\*Web Data*"
+        }
+      ],
+      "Name": "Google Chrome v10",
+      "RegistryRules": [],
+      "CreatedBy": "administrator",
+      "DateCreated": "2019-05-30T17:55:21Z",
+      "DateLastModified": "2019-05-30T19:19:39.811Z",
+      "Disabled": false,
+      "LastModifiedBy": "administrator",
+      "Id": "5cf01909b5cd6108e447e1e2"
+    }
+  ],
+  "Templates": []
+}
