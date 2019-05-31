@@ -12,7 +12,7 @@ function Read-InputBoxDialog([string]$Message, [string]$WindowTitle, [string]$De
 }
 
 
-$usershare="\\pro2016\ProfileShare"
+$usershare="\\SERVER\ProfileShare"
 #$username = Read-host -Prompt 'input users username'
 $username = Read-InputBoxDialog -Message "Please enter the username for your selected user'" -WindowTitle "Select User" -DefaultText "jsmith"
 

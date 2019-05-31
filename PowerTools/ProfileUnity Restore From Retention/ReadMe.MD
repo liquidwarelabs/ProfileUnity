@@ -4,6 +4,7 @@
 This is a powershell script that is a GUI for profile restore from the fileshare.<br>
 
 **How to Use** <br>
+Modify the line with your share info $usershare="\\SERVER\ProfileShare"
 Run powershell, follow prompts. This restores all portaibity archives
 
 **Prerequisites** <br>
@@ -38,7 +39,7 @@ function Read-InputBoxDialog([string]$Message, [string]$WindowTitle, [string]$De
 }
 
 
-$usershare="\\pro2016\ProfileShare"
+$usershare="\\SERVER\ProfileShare"
 #$username = Read-host -Prompt 'input users username'
 $username = Read-InputBoxDialog -Message "Please enter the username for your selected user'" -WindowTitle "Select User" -DefaultText "jsmith"
 
