@@ -23,7 +23,7 @@ LocalInstallProU.bat
 
 How to Use<br>
 Edit the Items in "EditMe"<br>
-ProUsettings.txt and scripts.ini<br>
+ProUsettings.txt<br>
 
 Edit "EDITME" items in ProUsettings.txt
 ````
@@ -31,12 +31,6 @@ User
 SOFTWARE\Liquidware Labs\ProfileUnity
 INIPath
 SZ:\\\\EDITME\\profileunity\\user
-````
-
-Edit "EDITME" items in Scripts.ini
-````
-[Logoff]
-0CmdLine=\\EDITME\profileUnity\ClientTools\LwL.ProfileUnity.Client.Logoff.exe
 ````
 
 Edit "EDITME" items in "LocalInstallProU.bat"
