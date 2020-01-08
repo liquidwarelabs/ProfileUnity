@@ -14,8 +14,9 @@
 		Email Address: Jack.Smith@liquidwarelabs.com
 		Twitter: @MrSmithLWL
 		Github: https://github.com/liquidwarelabs
-        LASTEDIT: 1/4/2017
+        LASTEDIT: 1/8/2020
         KEYWORDS: ProfileUnity, Powershell, Flexapp, Json
+		Notes: v1.2 Fixed Save Functions
  
 #> 
 
@@ -152,7 +153,7 @@ if ($answer -eq $False)
 {Write-Host "Save Canceled" -ForegroundColor "red" -BackgroundColor "yellow"}
 else 
 {
-Invoke-WebRequest https://"$servername":8000/api/portability -ContentType "application/json" -Method Post -WebSession $session -Body($Currentportrule | ConvertTo-Json -Depth 10)
+Invoke-WebRequest https://"$servername":8000/api/portability -ContentType "application/json" -Method Post -WebSession $session -Body($CurrentPortRule | ConvertTo-Json -Depth 10)
 }
 }
 
@@ -244,6 +245,11 @@ $jsonimport.ID=$null
 Invoke-WebRequest https://"$servername":8000/api/configuration -ContentType "application/json" -Method Post -WebSession $session -Body($jsonimport | ConvertTo-Json -Depth 10)
 
 }
+#Get ProU Redirtection #
+function get-ProUredirection {
+	$PUGinvred = ((Invoke-WebRequest https://"$servername":8000/api/collector/redirection -WebSession $session).Content) | ConvertFrom-Json
+	$PUGinvred.Tag.rows
+	}
 
 ## Import All Configuration Jsons
 Function Import-ProuConfigAll ($source)
