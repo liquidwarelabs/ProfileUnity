@@ -1,7 +1,7 @@
-# Selectivly choose which Modern apps to load
+# Selectively choose which Modern apps to load
 
 Description <br>
-Powershell script to selectivly load which modern apps you want to load for new user logins<br>
+Powershell script to Selectively load which modern apps you want to load for new user logins<br>
 
 How to Use<br>
 
