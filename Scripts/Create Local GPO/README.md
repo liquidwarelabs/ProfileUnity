@@ -2,6 +2,7 @@
 
 Description <br>
 Automatically creates Local GPO for ProfileUnity<br>
+V2 Update: Updated LGPO to 2.2, Changed Logoff to local
 
 Attached in this repository is:<br>
 LocalGPO.Zip [LocalGPO.zip][localgpozip]<br>
@@ -25,7 +26,7 @@ How to Use<br>
 Edit the Items in "EditMe"<br>
 ProUsettings.txt<br>
 
-Edit "EDITME" items in ProUsettings.txt
+Edit "EDITME" items in ProUsettings.txt to point to the user INI path
 ````
 User
 SOFTWARE\Liquidware Labs\ProfileUnity
@@ -33,7 +34,7 @@ INIPath
 SZ:\\\\EDITME\\profileunity\\user
 ````
 
-Edit "EDITME" items in "LocalInstallProU.bat"
+Edit "EDITME" items in "LocalInstallProU.bat" to point to the distro path
 ````
 xcopy /s \\EDITME\LocalGPO\* %temp%\LocalGPO\
 REM Optional Install of ProfileUnity client
@@ -52,13 +53,13 @@ ADM
 ````
 
 
-[localgpozip]: https://github.com/liquidwarelabs/ProfileUnity/blob/master/Scripts/Create%20Local%20GPO/LocalGPO.zip
+[localgpozip]: https://github.com/liquidwarelabs/ProfileUnity/blob/master/Scripts/Create%20Local%20GPO/LocalGPOv2.zip
 
 
 
 | OS Version  | Verified |
 | ------------- | ------------- |
-|Windows 10 | NO |
+|Windows 10 | YES |
 |Windows Server 2012 | NO |
 |Windows Server 2012 R2 | NO |
 |Windows Server 2008 R2 | NO |
