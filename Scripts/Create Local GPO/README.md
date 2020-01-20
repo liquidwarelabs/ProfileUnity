@@ -53,7 +53,7 @@ ADM
 ````
 
 
-[localgpozip]: https://github.com/liquidwarelabs/ProfileUnity/blob/master/Scripts/Create%20Local%20GPO/LocalGPOv2.zip
+[localgpozip]: https://github.com/liquidwarelabs/ProfileUnity/raw/master/Scripts/Create%20Local%20GPO/LocalGPOv2.zip
 
 
 
