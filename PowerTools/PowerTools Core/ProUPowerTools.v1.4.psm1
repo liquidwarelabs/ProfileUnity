@@ -17,6 +17,7 @@
         LASTEDIT: 1/8/2020
         KEYWORDS: ProfileUnity, Powershell, Flexapp, Json
 		Notes: v1.2 Fixed Save Functions
+			   v1.4 Fixed Config export and import functions	
  
 #> 
 
@@ -67,7 +68,7 @@ $PUGF.Tag.Rows
 ## Get FlexApps
 function get-ProUFlexapps
 {
-$PUFA = ((Invoke-WebRequest https://"$servername":8000/api/flexapppackage -WebSession $session).Content) | ConvertFrom-Json
+$PUFA = ((Invoke-WebRequest https://"$servername":8000/api/flexapppackage/vhd? -WebSession $session).Content) | ConvertFrom-Json
 $PUFA.TAG.ROWS
 }
 
@@ -86,7 +87,7 @@ $PUFP.TAG.ROWS
 function load-proUconfig([string]$name)
 {
 $PUGC = ((Invoke-WebRequest https://"$servername":8000/api/configuration -WebSession $session).Content) | ConvertFrom-Json
-[string]$configID=$PUGC.Tag.Rows | Where-Object {$_.name -Match $name} | foreach {$_.id}
+[string]$configID=$PUGC.Tag.Rows | Where-Object {$_.name -Match $name} | foreach-object {$_.id}
 $configR= ((Invoke-WebRequest https://"$servername":8000/api/configuration/"$configID" -WebSession $session).Content) | ConvertFrom-Json
 $config=$configR.tag
 $global:CurrentConfig = $config
@@ -97,7 +98,7 @@ $global:CurrentConfig = $config
 function load-proUPortRule([string]$name)
 {
 $PUGP = ((Invoke-WebRequest https://"$servername":8000/api/portability -WebSession $session).Content) | ConvertFrom-Json
-[string]$configID=$PUGP.Tag.Rows | Where-Object {$_.name -Match $name} | foreach {$_.id}
+[string]$configID=$PUGP.Tag.Rows | Where-Object {$_.name -Match $name} | foreach-object {$_.id}
 $configR= ((Invoke-WebRequest https://"$servername":8000/api/portability/"$configID" -WebSession $session).Content) | ConvertFrom-Json
 $config=$configR.tag
 $global:CurrentPortRule = $config
@@ -108,7 +109,7 @@ $global:CurrentPortRule = $config
 function load-proUfilter([string]$name)
 {
 $PUGF = ((Invoke-WebRequest https://"$servername":8000/api/filter -WebSession $session).Content) | ConvertFrom-Json
-[string]$configID=$PUGF.Tag.Rows | Where-Object {$_.name -EQ $name} | foreach {$_.id}
+[string]$configID=$PUGF.Tag.Rows | Where-Object {$_.name -EQ $name} | foreach-object {$_.id}
 $configR= ((Invoke-WebRequest https://"$servername":8000/api/filter/"$configID" -WebSession $session).Content) | ConvertFrom-Json
 $config=$configR.tag
 $global:Currentfilter = $config
@@ -182,9 +183,10 @@ else
 {
 #Load Config into memory
 $PUGC = ((Invoke-WebRequest https://"$servername":8000/api/configuration -WebSession $session).Content) | ConvertFrom-Json
-[string]$configID=$PUGC.Tag.Rows | Where-Object {$_.name -Match $name} | foreach {$_.id}
+[string]$configID=$PUGC.Tag.Rows | Where-Object {$_.name -Match $name} | foreach-object {$_.id}
 #Export Config
-Invoke-WebRequest https://"$servername":8000/api/configuration/"$configID" -WebSession $session -OutFile $savepath$name.json -PassThru
+$ProgressPreference = 'SilentlyContinue'
+Invoke-RestMethod -ContentType "application/octet-stream" -Uri https://"$servername":8000/api/configuration/"$configID"/download?encoding=default -WebSession $session -OutFile "$savepath$name.json"
 }
 }
 
@@ -205,11 +207,12 @@ else
 		{
 		#Load Configs into memory
 		$PUGC = ((Invoke-WebRequest https://"$servername":8000/api/configuration -WebSession $session).Content) | ConvertFrom-Json
-		[string]$configID=$PUGC.Tag.Rows | Where-Object {$_.name -Match $name} | foreach {$_.id}
+		[string]$configID=$PUGC.Tag.Rows | Where-Object {$_.name -Match $name} | foreach-object {$_.id}
 
 		#Export Config
-		Invoke-WebRequest https://"$servername":8000/api/configuration/"$configID" -WebSession $session -OutFile "$savepath$name.json" -PassThru
-			
+		#Invoke-WebRequest https://"$servername":8000/api/configuration/"$configID" -WebSession $session -OutFile "$savepath$name.json" -PassThru
+		$ProgressPreference = 'SilentlyContinue'
+		Invoke-RestMethod -ContentType "application/octet-stream" -Uri https://"$servername":8000/api/configuration/"$configID"/download?encoding=default -WebSession $session -OutFile "$savepath$name.json"
 		}
 	}
 }
@@ -227,24 +230,26 @@ Function Get-FileName($jsonfile)
 
  $OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
  $OpenFileDialog.initialDirectory = $initialDirectory
- $OpenFileDialog.filter = "All files (*.*)| *.*"
+ $OpenFileDialog.filter = "All files (*.json*)| *.json*"
  $OpenFileDialog.ShowDialog() | Out-Null
  $OpenFileDialog.filename
 } #end function Get-FileName
 
 #Import Json
 $jsonfile=Get-FileName
-$jsonimport=gc $jsonFile | ConvertFrom-Json
-$jsonimport=$jsonimport.tag
+$jsonimport=Get-Content $jsonFile | ConvertFrom-Json
 
 #Change Name and ID
-$jsonimport.name=$jsonimport.name + " - Imported"
-$jsonimport.ID=$null
+$connectionString = $jsonimport | select-object -expand configurations
+$connectionString.name = $jsonimport.Configurations.name + " - Imported"
+$connectionString.ID = $Null
+
 
 #Save Json
-Invoke-WebRequest https://"$servername":8000/api/configuration -ContentType "application/json" -Method Post -WebSession $session -Body($jsonimport | ConvertTo-Json -Depth 10)
+Invoke-WebRequest https://"$servername":8000/api/configuration -ContentType "application/json" -Method Post -WebSession $session -Body($jsonimport.configurations | ConvertTo-Json -Depth 10)
 
 }
+
 #Get ProU Redirtection #
 function get-ProUredirection {
 	$PUGinvred = ((Invoke-WebRequest https://"$servername":8000/api/collector/redirection -WebSession $session).Content) | ConvertFrom-Json
@@ -261,24 +266,24 @@ if (!$source)
 else 
 	{
 	
-	$list=gci $source
-	$list=$list.VersionInfo.filename
-	foreach ($list in $list) 
+	$lists=Get-ChildItem $source
+	$lists=$lists.VersionInfo.filename
+	foreach ($json in $lists) 
 
 		{
 
 		#Import Json
-		$jsonfile=$list
-		$jsonimport=gc $jsonFile | ConvertFrom-Json
-		$jsonimport=$jsonimport.tag
-
+		$jsonfile=$json
+		$jsonimport = Get-Content $jsonFile | ConvertFrom-Json
+		
 		#Change Name and ID
-		$jsonimport.name=$jsonimport.name + " - Imported"
-		$jsonimport.ID=$null
+		$connectionString = $jsonimport | Select-Object -expand configurations
+		$connectionString.name = $jsonimport.Configurations.name + " - Imported"
+		$connectionString.ID = $Null
 	
 		
 		#Save Json
-		Invoke-WebRequest https://"$servername":8000/api/configuration -ContentType "application/json" -Method Post -WebSession $session -Body($jsonimport | ConvertTo-Json -Depth 10)
+		Invoke-WebRequest https://"$servername":8000/api/configuration -ContentType "application/json" -Method Post -WebSession $session -Body($jsonimport.configurations | ConvertTo-Json -Depth 10)
 
 		}
 }

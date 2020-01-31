@@ -13,7 +13,7 @@ To load
 - **copy the PSM1 down into a folder.**
 - **In PowerShell type**:
 ````
-Import-module .\ProUPowerTools.v1.psm1
+Import-module .\ProUPowerTools.v1.4.psm1
 ````
 - **If you get an Execution Policy error.**
 ````
