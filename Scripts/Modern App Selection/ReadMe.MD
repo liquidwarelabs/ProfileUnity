@@ -23,7 +23,7 @@ Get-AppxPackage -allusers | select name
 Select which apps you want to add back to the user, then modify first line of powershell script with apps you want to add.
 
 ````
-$appxs="Microsoft.MicrosoftEdge,Microsoft.Windows.ShellExperienceHost,Microsoft.Windows.Cortana,windows.immersivecontrolpanel"
+$appxs="Microsoft.AAD.BrokerPlugin,Microsoft.Windows.Cortana,Microsoft.Windows.ShellExperienceHost,Microsoft.Windows.StartMenuExperienceHost,microsoft.accountscontrol"
 ````
 
 ````
