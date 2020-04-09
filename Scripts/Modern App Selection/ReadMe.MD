@@ -51,7 +51,11 @@ Get-AppXPackage -AllUsers -name *$appx* | Foreach {Add-AppxPackage -DisableDevel
 
 | OS Version  | Verified |
 | ------------- | ------------- |
-|Windows 10 1803 | NO |
+|Windows 10 2004 | YES |
+|Windows 10 1909 | YES |
+|Windows 10 1903 | YES |
+|Windows 10 1809 | YES |
+|Windows 10 1803 | YES |
 |Windows 10 1709 | YES |
 |Windows 10 1703 | YES |
 |Windows 10 1607 | YES |
