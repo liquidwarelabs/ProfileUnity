@@ -79,43 +79,12 @@ The backslash at the end of the path is important
 ````
 
 
-Future Build Information<br>
-````
-V2:
-Load Filters from CSV
-Load Printers from CSV (updated)
-Set-ProUPortabiltysetting (sets all option settings)
-Set-ProUFolderRedirection (sets all option settings)
-Set-ProUFilterValue (sets/Adds condition values)
-Replace-ProUPortSettings (find/Replace function)
-Replace-ProUFolderRedirection (find/Replace function)
-Replace-ProUFilter (find/Replace function)
-````
-````
-V3:
-(Experimental Stuff)
-Import GPP Regkeys
-Import GPP Folder redirect
-Import GPP shortcuts
-Import POL into regkey module
-Import Groups from AD OU to create proU Filters
-Import Printer List from print server to create ProU Filters
-````
-
-
-
-
 
 | OS Version  | Verified |
 | ------------- | ------------- |
+|Windows 2019 | Yes |
 |Windows 10 | Yes |
 |Windows Server 2012 | No |
 |Windows Server 2012 R2 | Yes |
-|Windows Server 2008 R2 | Yes |
-|Windows Server 2008 | No |
-|Windows Server 2003 | No |
 |Windows 8 | No |
 |Windows 7 | Yes |
-|Windows Vista | No |
-|Windows XP | No |
-|Windows 2000 | No |
