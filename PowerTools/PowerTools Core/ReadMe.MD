@@ -82,8 +82,9 @@ The backslash at the end of the path is important
 
 | OS Version  | Verified |
 | ------------- | ------------- |
-|Windows 2019 | Yes |
 |Windows 10 | Yes |
+|Windows 2019 | Yes |
+|Windows 2016 | Yes |
 |Windows Server 2012 | No |
 |Windows Server 2012 R2 | Yes |
 |Windows 8 | No |

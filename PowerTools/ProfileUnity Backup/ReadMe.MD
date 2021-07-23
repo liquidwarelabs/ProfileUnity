@@ -125,13 +125,9 @@ Backup-Proulatest
 | OS Version  | Verified |
 | ------------- | ------------- |
 |Windows 10 | Yes |
+|Windows 2019 | Yes |
+|Windows 2016 | Yes |
 |Windows Server 2012 | No |
 |Windows Server 2012 R2 | Yes |
-|Windows Server 2008 R2 | Yes |
-|Windows Server 2008 | No |
-|Windows Server 2003 | No |
 |Windows 8 | No |
 |Windows 7 | Yes |
-|Windows Vista | No |
-|Windows XP | No |
-|Windows 2000 | No |
