@@ -2,7 +2,7 @@ What are the SE Field Articles
 --------------
 Field SE Articles are written and updated by Liquidware Field Systems Engineeers. The docs, scripts and content are not supported by Liquidware Inc. The articles in this respository are for our clients and partners and offer examples of how ProfileUnity could be used.
    
-New to ProfileUnity™?
+New to ProfileUnity™ ?
 ------------------
 
 If you are new to ProfileUnity™ and would like to learn more, we recommend reviewing the [getting started][] documentation. <br>
