@@ -26,9 +26,6 @@ Follow prompts
 ````
 Set-ExecutionPolicy -ExecutionPolicy Unrestricted
 ````
-- **Edit Backup Script**
-
-- Open “BackupDBv4.ps1”
 
 -	**Example**
 -	.\backupDBv3.ps1 -servername "pro2020.foo.local" -ASEKeyFileLocation "C:\temp\BackupDBv3\aeskey.txt" -passwordFileLocation "C:\temp\BackupDBv3\password.txt" -savepath "c:\temp\" -purgeold -backupcount 3
@@ -99,7 +96,7 @@ Script Code backupDBv3.ps1:
 .PARAMETER ASEKeyFileLocation
    ASE file location
 .PARAMETER SavePath
-   Location to store backup files (Need trailing \)
+   Location to store backup files (Optional trailing \)
 .PARAMETER purgeold
    Purge old local backup file(s) (optional)
 .PARAMETER backupcount
