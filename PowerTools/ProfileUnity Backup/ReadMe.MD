@@ -28,15 +28,10 @@ Set-ExecutionPolicy -ExecutionPolicy Unrestricted
 ````
 - **Edit Backup Script**
 
-- Open “BackupDBv3.ps1”
-- **Edit the following lines**
-- User account tied to password (no domain required only username)
-- 	[Parameter(Mandatory=$false)][string]$user="admin"
-- Optional Change to retention
-- [Parameter(Mandatory=$false)]$keepcount = 3
+- Open “BackupDBv4.ps1”
 
 -	**Example**
--	\backupProUDB.ps1 -servername "myprouserver.domain.com" -ASEKeyFileLocation "C:\temp\ASEkey.txt" -passfile "C:\temp\mysecurepassword.txt" -savepath "c:\temp" -purgeold
+-	.\backupDBv3.ps1 -servername "pro2020.foo.local" -ASEKeyFileLocation "C:\temp\BackupDBv3\aeskey.txt" -passwordFileLocation "C:\temp\BackupDBv3\password.txt" -savepath "c:\temp\" -purgeold -backupcount 3
 
 -	**Override Flags**
 -	servername
@@ -45,7 +40,7 @@ Set-ExecutionPolicy -ExecutionPolicy Unrestricted
 -	ASEKeyFileLocation
 -	savepath
 -	purgeold
--	keepcount
+-	backupcount
 
 - **Make Task**
 - On ProfileUnity server start “Task Scheduler”
@@ -90,36 +85,39 @@ Script Code backupDBv3.ps1:
 .DESCRIPTION
    Back up Profile Unity Database Script for scheduled task
 .NOTES
-   Version:        1.0
+   Version:        4.0
    Author:         Ryan Butler (AHEAD)
+   Update Author: Jack Smith (Liquidware)
    Creation Date:  01-21-2019
    Purpose/Change: Based on https://github.com/liquidwarelabs/ProfileUnity/tree/master/PowerTools/ProfileUnity%20Backup
 .PARAMETER servername 
    Profile Unity server name
 .PARAMETER User
    Profile Unity username
-.PARAMETER Passfile
+.PARAMETER passwordFileLocation
    Password file location
+.PARAMETER ASEKeyFileLocation
+   ASE file location
 .PARAMETER SavePath
-   Location to store backup files (NO trailing \)
+   Location to store backup files (Need trailing \)
 .PARAMETER purgeold
-   Purge old local backup file(s)
-.PARAMETER keepcount
-   How many local backups to keep
+   Purge old local backup file(s) (optional)
+.PARAMETER backupcount
+   How many local backups to keep (works with PurgeOld)
 .EXAMPLE
    Runs backup of the profileunity database and keeps the 3 latest backups
-   .\backupProUDB.ps1 -servername "myprouserver.domain.com" -passfile "C:\temp\mysecurepassword.txt" -savepath "c:\temp" -purgeold
+   .\backupDBv4.ps1 -servername "ProUserver.domain.local" -user "administrator" -ASEKeyFileLocation "C:\temp\aeskey.txt" -passwordFileLocation "C:\temp\password.txt" -savepath "c:\temp\" -purgeold -backupcount 3
 #>
 [cmdletbinding()]
 Param
 (
     [Parameter(Mandatory=$true)][string]$servername,
-    [Parameter(Mandatory=$false)][string]$user="admin",
+    [Parameter(Mandatory=$false)][string]$user,
     [Parameter(Mandatory=$true)][string]$passwordFileLocation,
     [Parameter(Mandatory=$true)][string]$ASEKeyFileLocation,
     [Parameter(Mandatory=$true)][string]$savepath,
-    [Parameter(Mandatory=$true)][switch]$purgeold,
-    [Parameter(Mandatory=$false)]$keepcount = 3
+    [Parameter(Mandatory=$false)][switch]$purgeold,
+    [Parameter(Mandatory=$false)]$backupcount
 
 )
 
