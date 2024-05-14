@@ -10,7 +10,7 @@ This was built on the latest version of PowerShell.<br>
 https://www.microsoft.com/en-us/download/details.aspx?id=50395 <br>
 
 Download Zip with Script<br>
-https://github.com/liquidwarelabs/ProfileUnity/blob/master/PowerTools/ProfileUnity%20Filter%20Creation%20from%20Template/ProfileUnity%20Filter%20Creation%20from%20Template.zip?raw=true <br>
+https://github.com/liquidwarelabs/ProfileUnity/raw/master/PowerTools/ProfileUnity%20Filter%20Creation%20from%20Template/ProfileUnity%20Filter%20Creation%20from%20Templatev4.zip <br>
 
 **To load** <br>
 
