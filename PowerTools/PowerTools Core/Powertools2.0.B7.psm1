@@ -8,17 +8,27 @@ ProfileUnity Powershell Commands and Functions
   .DESCRIPTION 
  Made for ProfileUnity Command line modifications to configurations, Filters, and Portability Rules
   .NOTES 
-     NAME:  ProUPowerTools.v1.psm1
+     NAME:  ProUPowerTools2.0.B7.psm1
       AUTHOR: Jack Smith
-		Email Address: Jack.Smith@liquidwarelabs.com
-		Twitter: @MrSmithLWL
+		Email Address: Jack.Smith@liquidware.com
 		Github: https://github.com/liquidwarelabs
-      LASTEDIT: 1/8/2020
+      LASTEdit: 07/1/2025
       KEYWORDS: ProfileUnity, Powershell, Flexapp, Json
-		Notes: v2.0
+		Notes: v2.0B4
+		Updates Added Case consistency to all functions
+		Changes Deploy verb to Update verb (Update-ProUConfig)
+		v2.0B5 added no status for speed increase
+		Added in load for edit screen
+        Added Silent Switched for load for edit.
+        V2.0.B7
+        Added new connect-profileunity function
 #> 
 
 ## Supporting Core Functions ##
+
+##Speed up Powershell Process show no progress##
+$ProgressPreference = 'SilentlyContinue'
+
 
 ##Prompt-Choice Function Library code
 	function Prompt-Choice {
@@ -55,56 +65,156 @@ Function Get-FileName($jsonfile)
 
 ##login Functions Cert exceptions##
 
-function connect-ProfileUnityServer{
-
-########################################
-# Adding certificate exception to prevent API errors
-########################################
-add-type @"
-using System.Net;
-using System.Security.Cryptography.X509Certificates;
-public class TrustAllCertsPolicy : ICertificatePolicy {
-public bool CheckValidationResult(
-ServicePoint srvPoint, X509Certificate certificate,
-WebRequest request, int certificateProblem) {
-return true;
-}
-}
+function Connect-ProfileUnityServer {
+    [CmdletBinding(DefaultParameterSetName = 'Interactive')]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$ServerName,
+        
+        [Parameter(Mandatory = $false, ParameterSetName = 'PlainText')]
+        [string]$Username,
+        
+        [Parameter(Mandatory = $false, ParameterSetName = 'PlainText')]
+        [string]$Password,
+        
+        [Parameter(Mandatory = $false)]
+        [int]$Port = 8000,
+        
+        [Parameter(Mandatory = $false)]
+        [switch]$EnforceSSLValidation
+    )
+    
+    try {
+        # Get server name if not provided
+        if (-not $ServerName) {
+            $ServerName = Read-Host -Prompt 'Enter FQDN of ProfileUnity Server'
+            if ([string]::IsNullOrWhiteSpace($ServerName)) {
+                throw "Server name cannot be empty"
+            }
+        }
+        
+        # Get credentials
+        if ([string]::IsNullOrWhiteSpace($Username) -or [string]::IsNullOrWhiteSpace($Password)) {
+            Write-Host "Please enter your ProfileUnity credentials:" -ForegroundColor Yellow
+            
+            if ([string]::IsNullOrWhiteSpace($Username)) {
+                $Username = Read-Host -Prompt "Username"
+            }
+            
+            $SecurePassword = Read-Host -Prompt "Password for $Username" -AsSecureString
+            $Credential = New-Object System.Management.Automation.PSCredential($Username, $SecurePassword)
+        } else {
+            $securePass = ConvertTo-SecureString -String $Password -AsPlainText -Force
+            $Credential = New-Object System.Management.Automation.PSCredential($Username, $securePass)
+        }
+        
+        # Handle SSL certificate validation (bypass by default)
+        if (-not $EnforceSSLValidation) {
+            Write-Verbose "SSL certificate validation will be bypassed (default behavior)"
+            
+            if (-not ([System.Management.Automation.PSTypeName]'TrustAllCertsPolicy').Type) {
+                Add-Type @"
+                    using System.Net;
+                    using System.Security.Cryptography.X509Certificates;
+                    public class TrustAllCertsPolicy : ICertificatePolicy {
+                        public bool CheckValidationResult(
+                            ServicePoint srvPoint, X509Certificate certificate,
+                            WebRequest request, int certificateProblem) {
+                            return true;
+                        }
+                    }
 "@
-[System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
-#optional security bypass
-#[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'
-
-
-##Prof
-[string]$global:servername= Read-Host -Prompt 'FQDN of ProfileUnity Server Name'
-$user = Read-Host "Enter Username"
-$pass = Read-Host -assecurestring "Enter Password" 
-$pass2=[Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($pass))
-
-#Connect to Server
-Invoke-WebRequest https://"$servername":8000/authenticate -Body "username=$user&password=$pass2" -Method Post -SessionVariable session
-$global:session=$session
+            }
+            [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
+        }
+        
+        # Set modern TLS protocols
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls13
+        
+        # Construct the authentication URL
+        $authUrl = "https://${ServerName}:${Port}/authenticate"
+        Write-Host "Connecting to ProfileUnity server: $ServerName" -ForegroundColor Green
+        
+        # Prepare authentication body in ProfileUnity format
+        $username = $Credential.UserName
+        $password = $Credential.GetNetworkCredential().Password
+        $authBody = "username=$username&password=$password"
+        
+        # Create web request parameters
+        $requestParams = @{
+            Uri = $authUrl
+            Method = 'POST'
+            Body = $authBody
+            SessionVariable = 'webSession'
+            TimeoutSec = 30
+            ErrorAction = 'Stop'
+        }
+        
+        # Attempt authentication
+        $response = Invoke-WebRequest @requestParams
+        
+        # Check if authentication was successful
+        if ($response.StatusCode -eq 200) {
+            $global:session = $webSession
+            $global:servername = $ServerName
+            
+            Write-Host "Successfully connected to ProfileUnity server: $ServerName" -ForegroundColor Green
+            
+            return [PSCustomObject]@{
+                ServerName = $ServerName
+                Port = $Port
+                Connected = $true
+                AuthenticationTime = Get-Date
+            }
+        } else {
+            throw "Authentication failed with status code: $($response.StatusCode)"
+        }
+        
+    } catch {
+        Write-Error "Connection failed: $($_.Exception.Message)"
+        throw
+    } finally {
+        # Clear sensitive data
+        if ($Credential) {
+            $Credential = $null
+        }
+    }
 }
+
+# Quick test function
+function Test-ProfileUnityConnection {
+    if ($global:session -and $global:servername) {
+        Write-Host "Connection active to: $($global:servername)" -ForegroundColor Green
+        return $true
+    } else {
+        Write-Host "No active connection found" -ForegroundColor Yellow
+        return $false
+    }
+}
+
+## Login Function End ##
 
 
 ## Filter Functions (api/filter)
 
 ## Get Filter ##
-function get-ProUFilters
+function Get-ProUFilters
 {
 $PUG = ((Invoke-WebRequest https://"$servername":8000/api/Filter -WebSession $session).Content) | ConvertFrom-Json
 $PUG.Tag.Rows
 }
 
 ## Load ProfileUnity Filters ##
-function edit-ProUFilter([string]$name)
+function Edit-ProUFilter([string]$name, $quiet)
 {
 $PUG = ((Invoke-WebRequest https://"$servername":8000/api/Filter -WebSession $session).Content) | ConvertFrom-Json
 [string]$ID=$PUG.Tag.Rows | Where-Object {$_.name -Match $name} | foreach-object {$_.id}
 $configR= ((Invoke-WebRequest https://"$servername":8000/api/Filter/"$ID" -WebSession $session).Content) | ConvertFrom-Json
 $config=$configR.tag
 $global:CurrentFilter = $config
+if ($quiet -eq $False){
+write-host "$name loaded for editing"
+}
 }
 
 ## Save Filter settings ##
@@ -120,7 +230,7 @@ Function Save-ProUFilter{
 
 
 ## Delete Filter ##
-function remove-ProUFilter([string]$name)
+function Remove-ProUFilter([string]$name)
 {
 $PUG = ((Invoke-WebRequest https://"$servername":8000/api/filter -WebSession $session).Content) | ConvertFrom-Json
 [string]$ID=$PUG.Tag.Rows | Where-Object {$_.name -EQ $name} | ForEach-Object {$_.id}
@@ -131,7 +241,7 @@ write-host $message.message
 
 
 ## Export Single Filter Json
-function export-ProUFilter([string]$name, $savepath)
+function Export-ProUFilter([string]$name, $savepath)
 {
 if (!$savepath)
 	{
@@ -157,10 +267,10 @@ if (!$savepath)
 	}
 else 
 	{
-	#get List
-	$list=get-ProUFilters
+	#Get List
+	$list=Get-ProUFilters
 	[array]$list=$list.name
-	#export out all
+	#Export out all
 	foreach ($name in $list)
 		{
 		#Load Configs into memory
@@ -232,20 +342,23 @@ else
 ## Portability Functions (api/portability) ##
 
 ## Get PortRule ##
-function get-ProUPortRule
+function Get-ProUPortRule
 {
 $PUG = ((Invoke-WebRequest https://"$servername":8000/api/portability -WebSession $session).Content) | ConvertFrom-Json
 $PUG.Tag.Rows
 }
 
 ## Load ProfileUnity PortRules ##
-function edit-ProUPortRule([string]$name)
+function Edit-ProUPortRule([string]$name, $quiet)
 {
 $PUG = ((Invoke-WebRequest https://"$servername":8000/api/portability -WebSession $session).Content) | ConvertFrom-Json
 [string]$ID=$PUG.Tag.Rows | Where-Object {$_.name -Match $name} | foreach-object {$_.id}
 $configR= ((Invoke-WebRequest https://"$servername":8000/api/portability/"$ID" -WebSession $session).Content) | ConvertFrom-Json
 $config=$configR.tag
 $global:CurrentPortRule= $config
+if ($quiet -eq $False){
+write-host "$name loaded for editing"
+}
 }
 
 ## Save PortRule settings ##
@@ -261,7 +374,7 @@ Function Save-ProUPortRule{
 
 
 ## Delete PortRule ##
-function remove-ProUPortRule([string]$name)
+function Remove-ProUPortRule([string]$name)
 {
 $PUG = ((Invoke-WebRequest https://"$servername":8000/api/portability -WebSession $session).Content) | ConvertFrom-Json
 [string]$ID=$PUG.Tag.Rows | Where-Object {$_.name -EQ $name} | ForEach-Object {$_.id}
@@ -272,7 +385,7 @@ write-host $message.message
 
 
 ## Export Single PortRule Json
-function export-ProUPortRule([string]$name, $savepath)
+function Export-ProUPortRule([string]$name, $savepath)
 {
 if (!$savepath)
 	{
@@ -298,10 +411,10 @@ if (!$savepath)
 	}
 else 
 	{
-	#get List
-	$list=get-ProUPortRules
+	#Get List
+	$list=Get-ProUPortRules
 	[array]$list=$list.name
-	#export out all
+	#Export out all
 	foreach ($name in $list)
 		{
 		#Load Configs into memory
@@ -373,7 +486,7 @@ else
 ## flexapppackage Functions (api/flexapppackage) ##
 
 ## List all Flexapps
-function get-ProUFlexapps
+function Get-ProUFlexapps
 {
 $PUG = ((Invoke-WebRequest https://"$servername":8000/api/flexapppackage/ -WebSession $session).Content) | ConvertFrom-Json
 $PUG.TAG.ROWS
@@ -381,13 +494,16 @@ $PUG.TAG.ROWS
 
 
 ## Load Flexapp ##
-function edit-proUflexapp([string]$name)
+function Edit-proUflexapp([string]$name, $quiet)
 {
 $PUG = ((Invoke-WebRequest https://"$servername":8000/api/flexapppackage -WebSession $session).Content) | ConvertFrom-Json
 [string]$ID=$PUG.Tag.Rows | Where-Object {$_.name -EQ $name} | ForEach-Object {$_.id}
 $PUG= ((Invoke-WebRequest https://"$servername":8000/api/flexapppackage/"$ID" -WebSession $session).Content) | ConvertFrom-Json
 $PUG=$PUG.tag
 $global:CurrentFlexapp = $PUG
+if ($quiet -eq $False){
+write-host "$name loaded for editing"
+}
 }
 
 ## Save Flexapp settings ##
@@ -402,7 +518,7 @@ Function Save-ProUFlexapp{
     }
 
 ## Delete FlexApp ##
-function remove-proUFlexapp([string]$name)
+function Remove-proUFlexapp([string]$name)
 {
 $PUG = ((Invoke-WebRequest https://"$servername":8000/api/flexapppackage -WebSession $session).Content) | ConvertFrom-Json
 [string]$ID=$PUG.Tag.Rows | Where-Object {$_.name -EQ $name} | ForEach-Object {$_.id}
@@ -420,7 +536,7 @@ if (!$path)
     }
 else 
     {
-        $response = ((Invoke-WebRequest https://"$servername":8000/api/server/flexapppackagexml?path=$path -Method GET -WebSession $session).Content) | ConvertFrom-Json
+        $response = ((Invoke-WebRequest https://"$servername":8000/api/server/flexapppackagexml?path=$path -Method Get -WebSession $session).Content) | ConvertFrom-Json
         $package = $response.Tag
         $response = (Invoke-WebRequest https://"$servername":8000/api/flexapppackage/import -Method Post -ContentType "application/json" -WebSession $session -Body (ConvertTo-Json -depth 10 @($package))) | ConvertFrom-Json
     }   
@@ -439,7 +555,7 @@ else
         $list=(Get-ChildItem $sourcedir -Recurse -include *.xml) | foreach-object {$_.FullName}
         foreach ($path in $list)
         {
-        $response = ((Invoke-WebRequest https://"$servername":8000/api/server/flexapppackagexml?path=$path -Method GET -WebSession $session).Content) | ConvertFrom-Json
+        $response = ((Invoke-WebRequest https://"$servername":8000/api/server/flexapppackagexml?path=$path -Method Get -WebSession $session).Content) | ConvertFrom-Json
         $package = $response.Tag
         $response = (Invoke-WebRequest https://"$servername":8000/api/flexapppackage/import -Method Post -ContentType "application/json" -WebSession $session -Body (ConvertTo-Json -depth 10 @($package))) | ConvertFrom-Json
         }
@@ -459,20 +575,23 @@ write-host "Use command Save-ProuFlexapp to save note to package" -BackgroundCol
 ## Configuration Functions ##
 
 ## Get Configurations ##
-function get-ProUconfig
+function Get-ProUconfig
 {
 $PUG = ((Invoke-WebRequest https://"$servername":8000/api/configuration -WebSession $session).Content) | ConvertFrom-Json
 $PUG.Tag.Rows
 }
 
 ## Load ProfileUnity Configurations ##
-function edit-proUconfig([string]$name)
+function Edit-proUconfig([string]$name, $quiet)
 {
 $PUG = ((Invoke-WebRequest https://"$servername":8000/api/configuration -WebSession $session).Content) | ConvertFrom-Json
 [string]$ID=$PUG.Tag.Rows | Where-Object {$_.name -Match $name} | foreach-object {$_.id}
 $configR= ((Invoke-WebRequest https://"$servername":8000/api/configuration/"$ID" -WebSession $session).Content) | ConvertFrom-Json
 $config=$configR.tag
 $global:CurrentConfig = $config
+if ($quiet -eq $False){
+write-host "$name loaded for editing"
+}
 }
 
 ## Save Configuration settings ##
@@ -488,7 +607,7 @@ Function Save-ProUConfig{
 
 
 ## Delete Configuration ##
-function remove-proUConfig([string]$name)
+function Remove-proUConfig([string]$name)
 {
 $PUG = ((Invoke-WebRequest https://"$servername":8000/api/filter -WebSession $session).Content) | ConvertFrom-Json
 [string]$ID=$PUG.Tag.Rows | Where-Object {$_.name -EQ $name} | ForEach-Object {$_.id}
@@ -499,7 +618,7 @@ write-host $message.message
 
 
 ## Export Single Configuration Json
-function export-proUconfig([string]$name, $savepath)
+function Export-proUconfig([string]$name, $savepath)
 {
 if (!$savepath)
 	{
@@ -525,10 +644,10 @@ if (!$savepath)
 	}
 else 
 	{
-	#get List
-	$configlist=get-prouconfigs
+	#Get List
+	$configlist=Get-prouconfigs
 	[array]$configlist=$configlist.name
-	#export out all
+	#Export out all
 	foreach ($name in $configlist)
 		{
 		#Load Configs into memory
@@ -597,8 +716,8 @@ else
 }
 }
 
-## Deploy Configuration ##
-Function Deploy-ProUConfig([string]$name)
+## Update Configuration ##
+Function Update-ProUConfig([string]$name)
 {
 $answer=prompt-choice
 if ($answer -eq $False)
@@ -613,14 +732,14 @@ else
 }
 }
 
-## Configuration Edit functions (api/configuration), When using edit-proUconfig##
+## Configuration Edit functions (api/configuration), When using Edit-proUconfig##
 
 ## Add-Flexapp to ProUConfig ##
 
 function Add-proUFlexAppDia([string]$DIAname, [string]$filtername){
 
-    $dianame1 = get-ProUFlexapps | Where-Object {$_.Name -eq "$DIAname"}
-    $filterID1 = get-ProUFilters | Where-Object {$_.Name -eq "$filtername"}
+    $dianame1 = Get-ProUFlexapps | Where-Object {$_.Name -eq "$DIAname"}
+    $filterID1 = Get-ProUFilters | Where-Object {$_.Name -eq "$filtername"}
     $filterID = $filterID1.id
     
     $DIAPackage = @{
