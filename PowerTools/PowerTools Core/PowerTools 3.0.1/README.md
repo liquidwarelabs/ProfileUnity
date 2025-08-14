@@ -265,9 +265,6 @@ Start-ProUTroubleshooter
 ### v3.1 (Current)
 - Improved PowerShell 5.x compatibility
 - Syntax error fixes across all modules
-- Optimized token usage for large scripts
-- Modular architecture with sub-1000 line files
-- Enhanced error handling and validation
 
 ### v3.0
 - Interactive admin dashboard
