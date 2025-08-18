@@ -1,61 +1,50 @@
-# Scripts\GPO-Migration\Import-GPOAdmIntoProfileUnity.ps1
-# Location: \Scripts\GPO-Migration\Import-GPOAdmIntoProfileUnity.ps1
-# PowerShell 5.x Compatible
-
 <#
 .SYNOPSIS
-    Adds ADMX rules to ProfileUnity based on registry entries found in GPO
+    Adds ADMX rules based on registry entries found in GPO
 .DESCRIPTION
-    Parses GPO registry.pol files and matches them to ADMX files, then adds matching
-    ADMX templates using ProfileUnity PowerTools v3.0 Add-ProUAdmx function
+    Parses GPO registry.pol files and matches them to ADMX files, only adding those with matches
 .PARAMETER GpoDisplayName
     Display name of the GPO to import
 .PARAMETER ConfigName
     ProfileUnity configuration name to update
 .PARAMETER ProfileUnityModule
-    Path to ProfileUnity PowerShell module (optional - uses pre-loaded module if not specified)
+    Path to ProfileUnity PowerShell module (required)
 .PARAMETER PolicyDefinitionsPath
     Path to PolicyDefinitions folder (defaults to domain central store)
 .PARAMETER Language
     Language folder for ADML files (default: en-US)
-.PARAMETER FilterName
-    Optional filter name to apply to imported ADMX rules
 .PARAMETER SkipProblematicAdmx
-    Skip known problematic ADMX files
+    Skip known problematic ADMX files (default: false)
 .PARAMETER ProblematicAdmxList
     List of ADMX files to skip due to known issues
-.PARAMETER VerboseOutput
-    Show detailed output during processing
 .EXAMPLE
-    .\Import-GPOAdmIntoProfileUnity.ps1 -GpoDisplayName "Security Settings" -ConfigName "Production"
+    .\Add-AdmxByRegistry.ps1 -GpoDisplayName "Security Settings" -ConfigName "Production" -ProfileUnityModule ".\ProfileUnity-PowerTools.psm1"
+.EXAMPLE
+    .\Add-AdmxByRegistry.ps1 -GpoDisplayName "Chrome Policy" -ConfigName "Browsers" -ProfileUnityModule "C:\Scripts\ProfileUnity-PowerTools.psm1" -PolicyDefinitionsPath "C:\PolicyDefinitions"
 #>
 
-[CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter(Mandatory)]
-    [ValidateNotNullOrEmpty()]
     [string]$GpoDisplayName,
     
     [Parameter(Mandatory)]
-    [ValidateNotNullOrEmpty()]
     [string]$ConfigName,
     
+    [Parameter(Mandatory)]
     [string]$ProfileUnityModule,
     
     [string]$PolicyDefinitionsPath,
     
-    [ValidatePattern('^[a-z]{2}-[A-Z]{2}$')]
     [string]$Language = "en-US",
     
-    [string]$FilterName,
-    [switch]$SkipProblematicAdmx,
+    [switch]$SkipProblematicAdmx = $false,
+    
     [string[]]$ProblematicAdmxList = @("UserExperienceVirtualization.admx"),
-    [switch]$VerboseOutput
+    
+    [switch]$VerboseOutput,
+    
+    [switch]$WhatIf
 )
-
-$ErrorActionPreference = 'Stop'
-Set-StrictMode -Version 3.0
-$ProgressPreference = 'SilentlyContinue'
 
 # Set default PolicyDefinitions path if not provided
 if (-not $PolicyDefinitionsPath) {
@@ -67,11 +56,6 @@ if (-not $PolicyDefinitionsPath) {
         Write-Error "Could not determine domain. Please specify -PolicyDefinitionsPath"
         exit 1
     }
-}
-
-# Validate PolicyDefinitions path
-if (-not (Test-Path $PolicyDefinitionsPath -PathType Container)) {
-    throw "PolicyDefinitions path not found: $PolicyDefinitionsPath"
 }
 
 # Function to parse registry.pol
@@ -150,60 +134,27 @@ function Parse-RegistryPol {
                 }
             }
         } catch {
-            $pointer += 2
+            break
         }
     }
 
     return $results
 }
 
-# Function to get policy display name from ADML file
-function Get-PolicyDisplayName {
-    param(
-        [string]$PolicyId,
-        [string]$AdmxPath,
-        [string]$Language = "en-US"
-    )
-    
-    try {
-        # Find the ADML file that corresponds to the ADMX file
-        $admlFiles = Get-ChildItem -Path (Join-Path $AdmxPath $Language) -Filter "*.adml" -ErrorAction SilentlyContinue
-        foreach ($admlFile in $admlFiles) {
-            [xml]$adml = Get-Content -Path $admlFile.FullName -Raw -ErrorAction SilentlyContinue
-            if ($adml) {
-                $ns = New-Object System.Xml.XmlNamespaceManager($adml.NameTable)
-                $ns.AddNamespace("ns", $adml.DocumentElement.NamespaceURI)
-                
-                # Look for the policy ID in string elements
-                $stringNode = $adml.SelectSingleNode("//ns:string[@id='$PolicyId']", $ns)
-                if ($stringNode) {
-                    return $stringNode.InnerText.Trim()
-                }
-            }
-        }
-    } catch {
-        # Silently fail and return the original policy ID
-    }
-    
-    return $PolicyId
-}
-
 # Function to find ADMX files that match registry entries
 function Find-MatchingAdmx {
     param(
         [array]$RegistryEntries,
-        [string]$AdmxPath,
-        [string]$Language = "en-US"
+        [string]$AdmxPath
     )
     
     $matches = @{}
     $admxFiles = Get-ChildItem -Path $AdmxPath -Filter "*.admx" -ErrorAction Stop
     
     Write-Host "Scanning $($admxFiles.Count) ADMX files for registry matches..." -ForegroundColor Yellow
-    Write-Host "Registry entries to match: $($RegistryEntries.Count)" -ForegroundColor Gray
-
-foreach ($admxFile in $admxFiles) {
-    try {
+    
+    foreach ($admxFile in $admxFiles) {
+        try {
             [xml]$admx = Get-Content -Path $admxFile.FullName -Raw
             $ns = New-Object System.Xml.XmlNamespaceManager($admx.NameTable)
             $ns.AddNamespace("ns", $admx.DocumentElement.NamespaceURI)
@@ -211,8 +162,8 @@ foreach ($admxFile in $admxFiles) {
             $policies = $admx.SelectNodes("//ns:policy", $ns)
             
             foreach ($policy in $policies) {
-                $policyKey = $policy.GetAttribute("key")
-                $policyValueName = $policy.GetAttribute("valueName")
+                $policyKey = $policy.key
+                $policyValueName = $policy.valueName
                 
                 foreach ($regEntry in $RegistryEntries) {
                     # More flexible matching - handle case differences and partial matches
@@ -229,17 +180,13 @@ foreach ($admxFile in $admxFiles) {
                                 Matches = @()
                             }
                         }
-                        $policyId = $policy.GetAttribute("name")
-                        $policyDisplayName = Get-PolicyDisplayName -PolicyId $policyId -AdmxPath $AdmxPath -Language $Language
-                        
                         $matches[$admxFile.Name].Matches += [PSCustomObject]@{
-                            PolicyId = $policyId
-                            PolicyName = $policyDisplayName
+                            PolicyName = $policy.name
                             RegistryKey = $regEntry.RegistryKey
                             ValueName = $regEntry.ValueName
                         }
                         if ($VerboseOutput) {
-                            Write-Host "  Match: $($admxFile.Name) -> $policyDisplayName" -ForegroundColor DarkGray
+                            Write-Host "  Match: $($admxFile.Name) -> $($policy.name)" -ForegroundColor DarkGray
                         }
                     }
                 }
@@ -255,60 +202,50 @@ foreach ($admxFile in $admxFiles) {
     return $matches.Values
 }
 
-# Import required modules
-try {
-    Import-Module GroupPolicy -ErrorAction Stop
-    Write-Host "GroupPolicy module loaded successfully" -ForegroundColor Green
-    
-    if ($ProfileUnityModule -and (Test-Path $ProfileUnityModule)) {
-    Import-Module $ProfileUnityModule -ErrorAction Stop
-        Write-Host "ProfileUnity module imported from: $ProfileUnityModule" -ForegroundColor Green
-    } else {
-        Write-Host "Using pre-loaded ProfileUnity PowerTools module" -ForegroundColor Green
-    }
-    Write-Host "Required modules imported successfully" -ForegroundColor Green
-} catch {
-    Write-Error "Failed to import required modules: $($_.Exception.Message)"
-    Write-Host "`nREQUIRED: Group Policy Management Tools must be installed to use this script." -ForegroundColor Red
-    Write-Host "Installation options:" -ForegroundColor Yellow
-    Write-Host "  - Windows Server: Install 'Group Policy Management' feature via Server Manager" -ForegroundColor White
-    Write-Host "  - Windows 10/11: Install 'Group Policy Management Tools' via Optional Features" -ForegroundColor White
-    Write-Host "  - Or download from: https://www.microsoft.com/en-us/download/details.aspx?id=45520" -ForegroundColor White
-    throw "GroupPolicy module is required but not available. Please install Group Policy Management Tools."
-}
-
 # Main script
 Write-Host "`n=== ADMX Import by Registry Matching ===" -ForegroundColor Cyan
 Write-Host "GPO: $GpoDisplayName" -ForegroundColor Yellow
 Write-Host "Target Config: $ConfigName" -ForegroundColor Yellow
 Write-Host "PolicyDefinitions: $PolicyDefinitionsPath" -ForegroundColor Yellow
 
-# Connect to ProfileUnity and load configuration
-try {
-    if (-not (Get-Command Connect-ProfileUnityServer -ErrorAction SilentlyContinue)) {
-        throw "ProfileUnity PowerTools not properly loaded"
-    }
-    
-    # Connect if needed
-    if (!(Get-ProfileUnityConnectionStatus)) {
-        Write-Host "`nConnecting to ProfileUnity..." -ForegroundColor Yellow
-        Connect-ProfileUnityServer | Out-Null
-    }
-    
-    Edit-ProUConfig -Name $ConfigName
-    Write-Host "ProfileUnity configuration '$ConfigName' loaded for editing" -ForegroundColor Green
-} catch {
-    throw "Failed to load ProfileUnity configuration: $($_.Exception.Message)"
+# Load ProfileUnity module
+if (Test-Path $ProfileUnityModule) {
+    Import-Module $ProfileUnityModule -Force
+    Write-Host "Loaded ProfileUnity module from: $ProfileUnityModule" -ForegroundColor Green
+} else {
+    Write-Error "ProfileUnity module not found at: $ProfileUnityModule"
+    exit 1
 }
 
-# Get and validate GPO
+# Connect if needed
+if (!(Test-ProfileUnityConnection)) {
+    Write-Host "`nConnecting to ProfileUnity..." -ForegroundColor Yellow
+    Connect-ProfileUnityServer | Out-Null
+}
+
+$servername = if ($global:servername) { $global:servername } else { $script:ModuleConfig.ServerName }
+if (-not $servername) {
+    $servername = Read-Host "Enter ProfileUnity server name"
+}
+
+# Load configuration
+Write-Host "`nLoading configuration: $ConfigName" -ForegroundColor Yellow
+try {
+    Edit-ProUConfig -Name $ConfigName -Quiet | Out-Null
+} catch {
+    Write-Error "Failed to load configuration: $_"
+    exit 1
+}
+
+# Get GPO
 try {
     $gpo = Get-GPO -Name $GpoDisplayName -ErrorAction Stop
     $gpoId = $gpo.Id.ToString().ToUpper()
     Write-Host "GPO ID: $gpoId" -ForegroundColor Green
-    Write-Host "GPO ID Format: {$gpoId}" -ForegroundColor DarkGray
+    Write-Host "GPO ID Format: {$gpoId}" -ForegroundColor DarkGray  # Show with brackets to see exact format
 } catch {
-    throw "GPO '$GpoDisplayName' not found: $($_.Exception.Message)"
+    Write-Error "Failed to find GPO: $_"
+    exit 1
 }
 
 # Parse registry.pol files
@@ -323,9 +260,6 @@ $allRegistryEntries = @()
 if (Test-Path $computerPolPath) {
     $compEntries = Parse-RegistryPol -FilePath $computerPolPath
     Write-Host "  Computer entries: $($compEntries.Count)" -ForegroundColor Green
-    if ($VerboseOutput) {
-        $compEntries | ForEach-Object { Write-Host "    $($_.RegistryKey) -> $($_.ValueName)" -ForegroundColor DarkGray }
-    }
     $allRegistryEntries += $compEntries
 }
 
@@ -342,7 +276,7 @@ if ($allRegistryEntries.Count -eq 0) {
 
 # Find matching ADMX files
 Write-Host "`nSearching for matching ADMX files..." -ForegroundColor Yellow
-$matchedAdmx = Find-MatchingAdmx -RegistryEntries $allRegistryEntries -AdmxPath $PolicyDefinitionsPath -Language $Language
+$matchedAdmx = Find-MatchingAdmx -RegistryEntries $allRegistryEntries -AdmxPath $PolicyDefinitionsPath
 
 Write-Host "`nMatched ADMX files:" -ForegroundColor Green
 if ($matchedAdmx.Count -eq 0) {
@@ -354,26 +288,21 @@ $matchedAdmx | ForEach-Object {
     Write-Host "  - $($_.FileName) ($($_.Matches.Count) matching policies)" -ForegroundColor Cyan
     if ($VerboseOutput) {
         $_.Matches | ForEach-Object {
-            Write-Host "    Policy: $($_.PolicyName) (ID: $($_.PolicyId))" -ForegroundColor DarkGray
+            Write-Host "    Policy: $($_.PolicyName)" -ForegroundColor DarkGray
         }
     }
 }
 
 # Initialize AdministrativeTemplates if needed
-$currentConfig = $global:CurrentConfig
-if (-not $currentConfig) {
-    throw "No configuration loaded for editing. Use Edit-ProUConfig first."
-}
-
-if ($null -eq $currentConfig.AdministrativeTemplates) {
+if ($null -eq $global:CurrentConfig.AdministrativeTemplates) {
     Write-Host "`nInitializing AdministrativeTemplates array" -ForegroundColor Yellow
-    $currentConfig | Add-Member -NotePropertyName AdministrativeTemplates -NotePropertyValue @() -Force
+    $global:CurrentConfig | Add-Member -NotePropertyName AdministrativeTemplates -NotePropertyValue @() -Force
 }
 
 # Get starting sequence
 $sequence = 1
-if ($currentConfig.AdministrativeTemplates.Count -gt 0) {
-    $maxSeq = ($currentConfig.AdministrativeTemplates | Measure-Object -Property Sequence -Maximum).Maximum
+if ($global:CurrentConfig.AdministrativeTemplates.Count -gt 0) {
+    $maxSeq = ($global:CurrentConfig.AdministrativeTemplates | Measure-Object -Property Sequence -Maximum).Maximum
     if ($maxSeq) { $sequence = $maxSeq + 1 }
 }
 
@@ -414,55 +343,108 @@ foreach ($admxFile in $matchedAdmx) {
         Write-Host "  ADML Path: $admlPath" -ForegroundColor DarkGray
     }
     
-    if (-not $PSCmdlet.ShouldProcess("Add ADMX template", "Would add ADMX: $($admxFile.FileName)")) {
+    if ($WhatIf) {
         Write-Host "  What-If: Would add $($admxFile.FileName) with sequence $sequence" -ForegroundColor Cyan
         $addedCount++
         $sequence++
         continue
     }
     
-    # Use the Add-ProUAdmx function with proper parameters
+    # Build URL for ProfileUnity API
+    $URL = "https://'$servername':8000/api/server/admxadmlfiles?admx=$admxPath&adml=$admlPath&gpoid=$gpoId"
+    $URL = $URL -replace "'", ""
+    
     try {
         Write-Host "  Querying ProfileUnity..." -ForegroundColor Gray
-        
-        $addParams = @{
-            AdmxFile = $admxPath
-            AdmlFile = $admlPath
-            GpoId = $gpoId
-            Description = "Imported from GPO: $GpoDisplayName"
-            Sequence = $sequence
-        }
-        
-        if ($FilterName) {
-            $addParams.FilterName = $FilterName
-        }
-        
         if ($VerboseOutput) {
-            Write-Host "  Calling Add-ProUAdmx with parameters: $($addParams | ConvertTo-Json)" -ForegroundColor DarkGray
+            Write-Host "  URL: $URL" -ForegroundColor DarkGray  # Debug output
         }
         
-        $result = Add-ProUAdmx @addParams
+        $response = Invoke-WebRequest "$URL" -WebSession $global:session -UseBasicParsing
+        $responseData = $response.Content | ConvertFrom-Json
+        $ADMxRule = $responseData.tag
         
-        if ($result) {
+        if ($ADMxRule) {
+            # Clean the ADMX data to fix parsing issues
+            Write-Host "  Cleaning ADMX data..." -ForegroundColor Gray
+            
+            # Function to clean text
+            function Clean-Text {
+                param([string]$Text)
+                if ([string]::IsNullOrEmpty($Text)) { return $Text }
+                
+                # Replace problematic characters
+                $Text = $Text -replace '["""]', '"'
+                $Text = $Text -replace "[''']", "'"
+                $Text = $Text -replace '[–—]', '-'
+                $Text = $Text -replace '•', '*'
+                $Text = $Text -replace '…', '...'
+                
+                return $Text
+            }
+            
+            # Clean HelpText in all settings
+            if ($ADMxRule.Categories) {
+                foreach ($category in $ADMxRule.Categories) {
+                    if ($category.Children) {
+                        foreach ($child in $category.Children) {
+                            if ($child.Children) {
+                                foreach ($subchild in $child.Children) {
+                                    if ($subchild.Settings) {
+                                        foreach ($setting in $subchild.Settings) {
+                                            if ($setting.HelpText) {
+                                                $setting.HelpText = Clean-Text -Text $setting.HelpText
+                                            }
+                                            if ($setting.DisplayName) {
+                                                $setting.DisplayName = Clean-Text -Text $setting.DisplayName
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            # Also clean TemplateSettingStates if present
+            if ($ADMxRule.TemplateSettingStates) {
+                foreach ($state in $ADMxRule.TemplateSettingStates) {
+                    if ($state.HelpText) {
+                        $state.HelpText = Clean-Text -Text $state.HelpText
+                    }
+                }
+            }
+            
+            $ADMxRule.Sequence = $sequence
+            $ADMxRule.Description = "Imported from GPO: $GpoDisplayName"
+            $global:CurrentConfig.AdministrativeTemplates += @($ADMxRule)
+            
             Write-Host "  SUCCESS: Added with sequence $sequence" -ForegroundColor Green
             Write-Host "  Matched policies: $($admxFile.Matches.Count)" -ForegroundColor Gray
             
             $addedCount++
             $sequence++
-                } else {
+        } else {
             Write-Warning "No data returned for $($admxFile.FileName)"
             if ($VerboseOutput) {
-                Write-Host "  No result returned from Add-ProUAdmx" -ForegroundColor DarkGray
+                Write-Host "  Response Status: $($response.StatusCode)" -ForegroundColor DarkGray
+                Write-Host "  Response Content: $($response.Content)" -ForegroundColor DarkGray
             }
         }
         
-        } catch {
+    } catch {
         Write-Error "Failed to add $($admxFile.FileName): $_"
         if ($VerboseOutput) {
             Write-Host "  Error Details: $($_.Exception.Message)" -ForegroundColor Red
             Write-Host "  Error Type: $($_.Exception.GetType().FullName)" -ForegroundColor Red
         }
     }
+}
+
+# Update script-scoped variable if exists
+if ($script:ModuleConfig -and $script:ModuleConfig.CurrentItems) {
+    $script:ModuleConfig.CurrentItems.Config = $global:CurrentConfig
 }
 
 # Show results
@@ -473,15 +455,23 @@ Write-Host "ADMX files added: $addedCount" -ForegroundColor Green
 if ($skippedCount -gt 0) {
     Write-Host "ADMX files skipped: $skippedCount" -ForegroundColor Yellow
 }
-Write-Host "Total AdministrativeTemplates in config: $($currentConfig.AdministrativeTemplates.Count)" -ForegroundColor Green
+Write-Host "Total AdministrativeTemplates in config: $($global:CurrentConfig.AdministrativeTemplates.Count)" -ForegroundColor Green
 
-if ($addedCount -gt 0) {
-    Write-Verbose "`nCleaning configuration to prevent JSON parsing errors..."
-    Clean-ProUConfiguration
-    Write-Host "`nUse Save-ProUConfig to save changes to ProfileUnity" -ForegroundColor Cyan
+if ($WhatIf) {
+    Write-Host "`nWhat-If mode: No changes were made" -ForegroundColor Yellow
+} elseif ($addedCount -gt 0) {
+    Write-Host "`nSaving configuration..." -ForegroundColor Yellow
+    try {
+        # Suppress the default output from Save-ProUConfig
+        $saveOutput = Save-ProUConfig
+        Write-Host "Configuration saved successfully!" -ForegroundColor Green
+    } catch {
+        Write-Error "Failed to save: $_"
+        Write-Host "`nThe configuration has been updated in memory but could not be saved." -ForegroundColor Yellow
+        Write-Host "You may need to remove problematic ADMX files or save manually." -ForegroundColor Yellow
+    }
 } else {
     Write-Host "`nNo changes made to configuration." -ForegroundColor Yellow
 }
 
 Write-Host "`n=== Complete ===" -ForegroundColor Green
-

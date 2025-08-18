@@ -1,4 +1,4 @@
-# ConfigurationDeploy.ps1 - Configuration Deployment and Management Functions
+﻿# ConfigurationDeploy.ps1 - Configuration Deployment and Management Functions
 
 function Update-ProUConfig {
     <#
@@ -567,12 +567,15 @@ function Compare-ProUConfig {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
-    'Update-ProUConfig',
-    'Get-ProUConfigScript',
     'Export-ProUConfig',
     'Export-ProUConfigAll',
     'Import-ProUConfig',
     'Import-ProUConfigAll',
     'Compare-ProUConfig'
 )
+#>
+
+
+

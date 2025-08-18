@@ -1,4 +1,4 @@
-# Core/EventManagement.ps1 - ProfileUnity Event Management Functions
+﻿# Core/EventManagement.ps1 - ProfileUnity Event Management Functions
 
 function Get-ProUEvents {
     <#
@@ -498,10 +498,12 @@ function Clear-ProUEventLog {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
-    'Get-ProUEvents',
-    'Get-ProUEventSources',
     'Watch-ProUEvents',
-    'Export-ProUEvents',
-    'Clear-ProUEventLog'
-)
+    'Export-ProUEvents')
+#>
+
+
+
+

@@ -798,6 +798,7 @@ function Show-ProUPerformanceDashboard {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Get-ProUPerformanceMetrics',
     'Get-ProUServerPerformanceMetrics',
@@ -808,3 +809,4 @@ Export-ModuleMember -Function @(
     'Show-ProUPerformanceMetricsConsole',
     'Show-ProUPerformanceDashboard'
 )
+#>

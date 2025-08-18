@@ -503,6 +503,7 @@ function Compare-ProUFlexappVersions {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Import-ProUFlexapp',
     'Import-ProUFlexappsAll',
@@ -511,3 +512,4 @@ Export-ModuleMember -Function @(
     'Update-ProUFlexappMetadata',
     'Compare-ProUFlexappVersions'
 )
+#>

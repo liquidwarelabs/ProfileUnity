@@ -732,6 +732,7 @@ function Get-ProUConfigurationHealthScore {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Test-ProUBestPractices',
     'Test-ProUSecurityBestPractices',
@@ -741,3 +742,4 @@ Export-ModuleMember -Function @(
     'Get-ProUConfigurationHealthScore',
     'Show-ProUBestPracticesConsoleReport'
 )
+#>

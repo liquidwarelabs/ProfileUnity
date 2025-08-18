@@ -1,4 +1,4 @@
-# Cloud\CloudIntegration.ps1 - ProfileUnity Cloud Integration Functions (Enhanced)
+﻿# Cloud\CloudIntegration.ps1 - ProfileUnity Cloud Integration Functions (Enhanced)
 
 function Get-ProUCloudCredentials {
     <#
@@ -596,20 +596,21 @@ function Request-ProUAzureGraphToken {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Get-ProUCloudCredentials',
     'New-ProUCloudCredential',
     'Copy-ProUCloudCredential',
-    'Test-ProUCloudCredential',
     'Remove-ProUCloudCredential',
-    'Get-ProUAzureGraph',
-    'Get-ProUAzureGroups',
     'Get-ProUAzureSubscriptions',
     'Get-ProUAzureResourceGroups',
     'Get-ProUAzureHostPools',
     'Get-ProUAzureLocations',
     'Test-ProUAzureDomain',
     'Get-ProUAzureSearchableDomains',
-    'Sync-ProUAppAttachPackages',
-    'Request-ProUAzureGraphToken'
-)
+    'Sync-ProUAppAttachPackages')
+#>
+
+
+
+

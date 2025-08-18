@@ -1122,6 +1122,7 @@ function Start-ProUServerUpdate { Write-Host "Server update - Coming soon!" -For
 #endregion
 
 # Export functions (this would be handled by the module manifest in real implementation)
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Show-ProUDashboard'
     'Get-ProUSystemHealthScore'
@@ -1131,3 +1132,4 @@ Export-ModuleMember -Function @(
     'Start-ProUDeploymentWizard'
     'Start-ProUServerWizard'
 )
+#>

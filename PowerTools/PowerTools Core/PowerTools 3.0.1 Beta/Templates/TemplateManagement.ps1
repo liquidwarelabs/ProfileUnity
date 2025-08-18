@@ -614,6 +614,7 @@ function Compare-ProUTemplate {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Get-ProUTemplate',
     'Export-ProUTemplate',
@@ -623,3 +624,4 @@ Export-ModuleMember -Function @(
     'Import-ProUTemplate',
     'Compare-ProUTemplate'
 )
+#>

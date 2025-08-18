@@ -1,6 +1,3 @@
-# Scripts\GPO-Migration\Import-GPOPreferencesToProfileUnity.ps1
-# Import Group Policy Preferences into ProfileUnity Configuration
-
 <#
 .SYNOPSIS
     Imports Group Policy Preferences directly into ProfileUnity configuration.
@@ -11,6 +8,8 @@
     Display name of the source GPO.
 .PARAMETER ConfigName
     ProfileUnity configuration name to update.
+.PARAMETER ProfileUnityModule
+    Path to ProfileUnity PowerShell module (required).
 .PARAMETER FilterName
     Optional filter name to apply to imported items.
 .PARAMETER IncludeDrives
@@ -32,9 +31,9 @@
 .PARAMETER WhatIf
     Shows what would be imported without making changes.
 .EXAMPLE
-    .\Import-GPOPreferencesToProfileUnity.ps1 -GpoDisplayName "UserSettings" -ConfigName "Production" -IncludeAll
+    .\Import-GPOPreferencesToProfileUnity.ps1 -GpoDisplayName "UserSettings" -ConfigName "Production" -ProfileUnityModule ".\ProfileUnity-PowerTools.psm1" -IncludeAll
 .EXAMPLE
-    .\Import-GPOPreferencesToProfileUnity.ps1 -GpoDisplayName "DriveMapGPO" -ConfigName "Test" -IncludeDrives -FilterName "Domain Users"
+    .\Import-GPOPreferencesToProfileUnity.ps1 -GpoDisplayName "DriveMapGPO" -ConfigName "Test" -ProfileUnityModule "C:\Scripts\ProfileUnity-PowerTools.psm1" -IncludeDrives -FilterName "Domain Users"
 #>
 
 param (
@@ -42,7 +41,10 @@ param (
     [string]$GpoDisplayName,
 
     [Parameter(Mandatory)]
-    [string]$ConfigurationName,
+    [string]$ConfigName,
+    
+    [Parameter(Mandatory)]
+    [string]$ProfileUnityModule,
     
     [string]$FilterName,
 
@@ -92,20 +94,27 @@ if ($IncludeAll) {
 
 Write-Host "`n=== GPO to ProfileUnity Import ===" -ForegroundColor Cyan
 Write-Host "Source GPO: $GpoDisplayName" -ForegroundColor Yellow
-Write-Host "Target Config: $ConfigurationName" -ForegroundColor Yellow
+Write-Host "Target Config: $ConfigName" -ForegroundColor Yellow
 
-# Use pre-loaded ProfileUnity PowerTools module
-Write-Host "Using pre-loaded ProfileUnity PowerTools module" -ForegroundColor Green
+# Load ProfileUnity module
+if (Test-Path $ProfileUnityModule) {
+    Import-Module $ProfileUnityModule -Force
+    Write-Host "Loaded ProfileUnity module" -ForegroundColor Green
+} else {
+    Write-Error "ProfileUnity module not found at: $ProfileUnityModule"
+    exit 1
+}
 
-# Load configuration if not already loaded
-Write-Host "`nLoading configuration: $ConfigurationName" -ForegroundColor Yellow
+# Connect if needed
+if (!(Test-ProfileUnityConnection)) {
+    Write-Host "`nConnecting to ProfileUnity..." -ForegroundColor Yellow
+    Connect-ProfileUnityServer | Out-Null
+}
+
+# Load configuration
+Write-Host "`nLoading configuration: $ConfigName" -ForegroundColor Yellow
 try {
-    # Check if we already have a configuration loaded
-    if ($global:CurrentConfig -and $global:CurrentConfig.Name -eq $ConfigurationName) {
-        Write-Host "Configuration '$ConfigurationName' already loaded" -ForegroundColor Green
-    } else {
-        Edit-ProUConfig -Name $ConfigurationName -Quiet | Out-Null
-    }
+    Edit-ProUConfig -Name $ConfigName -Quiet | Out-Null
 } catch {
     Write-Error "Failed to load configuration: $_"
     exit 1
@@ -136,6 +145,59 @@ Write-Host "GPO ID: $($Gpo.Id)" -ForegroundColor Cyan
 # Get GPO path
 $Domain = (Get-ADDomain).DNSRoot
 $GpoPath = "\\$Domain\SYSVOL\$Domain\Policies\{$($Gpo.Id)}"
+
+# Function to parse Item Level Targeting (simplified for now)
+function Parse-ItemLevelTargeting {
+    param ([System.Xml.XmlElement]$FiltersNode)
+    
+    if (-not $FiltersNode) { return $null }
+    
+    # For now, we'll just note that ILT exists
+    # Full ILT conversion would require mapping to ProfileUnity filters
+    return $true
+}
+
+# Function to convert GPP action to ProfileUnity action
+function Convert-GPPAction {
+    param([string]$Action)
+    
+    switch ($Action) {
+        "C" { return 0 } # Create
+        "R" { return 1 } # Replace
+        "U" { return 0 } # Update -> Create
+        "D" { return 2 } # Delete
+        default { return 0 }
+    }
+}
+
+# Function to convert registry hive to ProfileUnity format
+function Convert-RegistryHive {
+    param([string]$Hive)
+    
+    switch ($Hive) {
+        "HKEY_CLASSES_ROOT" { return 0 }
+        "HKEY_CURRENT_USER" { return 1 }
+        "HKEY_LOCAL_MACHINE" { return 2 }
+        "HKEY_USERS" { return 3 }
+        "HKEY_CURRENT_CONFIG" { return 4 }
+        default { return 1 } # Default to HKCU
+    }
+}
+
+# Function to convert registry type to ProfileUnity format
+function Convert-RegistryType {
+    param([string]$Type)
+    
+    switch ($Type) {
+        "REG_SZ" { return 0 }
+        "REG_DWORD" { return 1 }
+        "REG_BINARY" { return 2 }
+        "REG_EXPAND_SZ" { return 3 }
+        "REG_MULTI_SZ" { return 4 }
+        "REG_QWORD" { return 5 }
+        default { return 0 }
+    }
+}
 
 # Function to convert shortcut location to ProfileUnity format
 function Convert-ShortcutLocation {
@@ -252,11 +314,11 @@ if ($IncludeDrives) {
                             Filter = if ($filterId) { $FilterName } else { $null }
                             FilterId = $filterId
                             Description = "Imported from GPO: $GpoDisplayName"
-                            Disabled = $false
+                            Disabled = $drive.disabled -eq "1"
                             Sequence = $sequences.Drives
                         }
                         
-                        if ($drive.Filters -and $drive.Filters.ChildNodes.Count -gt 0) {
+                        if ($drive.Filters) {
                             $driveMapping.Description += " (Has ILT)"
                         }
                         
@@ -316,11 +378,11 @@ if ($IncludeShortcuts) {
                             Filter = if ($filterId) { $FilterName } else { $null }
                             FilterId = $filterId
                             Description = "Imported from GPO: $GpoDisplayName"
-                            Disabled = $false
+                            Disabled = $shortcut.disabled -eq "1"
                             Sequence = $sequences.Shortcuts
                         }
                         
-                        if ($shortcut.Filters -and $shortcut.Filters.ChildNodes.Count -gt 0) {
+                        if ($shortcut.Filters) {
                             $shortcutItem.Description += " (Has ILT)"
                         }
                         
@@ -353,7 +415,12 @@ if ($IncludeRegistry) {
             try {
                 [xml]$xml = Get-Content $registryXml -Raw -Encoding UTF8
                 
-                foreach ($node in $xml.RegistrySettings.Registry) {
+                # Process both Registry and Collection nodes
+                $allNodes = @()
+                $allNodes += $xml.RegistrySettings.Registry
+                $allNodes += $xml.RegistrySettings.Collection
+                
+                foreach ($node in $allNodes) {
                     if ($node -and $node.Properties) {
                         $props = $node.Properties
                         
@@ -366,19 +433,19 @@ if ($IncludeRegistry) {
                         $registryItem = @{
                             Action = 0  # Always use Create
                             Data = if ($props.value) { $props.value } else { "" }
-                            DataType = 0  # Default to REG_SZ
-                            Hive = 1  # Default to HKCU
+                            DataType = Convert-RegistryType -Type $props.type
+                            Hive = Convert-RegistryHive -Hive $props.hive
                             Key = $props.key
                             ProcessActionPostLogin = $ProcessPostLogin
                             Value = if ($props.name) { $props.name } else { "" }
                             Filter = if ($filterId) { $FilterName } else { $null }
                             FilterId = $filterId
                             Description = "Imported from GPO: $GpoDisplayName"
-                            Disabled = $false
+                            Disabled = $node.disabled -eq "1"
                             Sequence = $sequences.Registry
                         }
                         
-                        if ($node.Filters -and $node.Filters.ChildNodes.Count -gt 0) {
+                        if ($node.Filters) {
                             $registryItem.Description += " (Has ILT)"
                         }
                         
@@ -428,11 +495,11 @@ if ($IncludeEnvironment) {
                             Filter = if ($filterId) { $FilterName } else { $null }
                             FilterId = $filterId
                             Description = "Imported from GPO: $GpoDisplayName"
-                            Disabled = $false
+                            Disabled = $envVar.disabled -eq "1"
                             Sequence = $sequences.Environment
                         }
                         
-                        if ($envVar.Filters -and $envVar.Filters.ChildNodes.Count -gt 0) {
+                        if ($envVar.Filters) {
                             $envItem.Description += " (Has ILT)"
                         }
                         
@@ -487,11 +554,11 @@ if ($IncludePrinters) {
                             Filter = if ($filterId) { $FilterName } else { $null }
                             FilterId = $filterId
                             Description = "Imported from GPO: $GpoDisplayName"
-                            Disabled = $false
+                            Disabled = $printer.disabled -eq "1"
                             Sequence = $sequences.Printers
                         }
                         
-                        if ($printer.Filters -and $printer.Filters.ChildNodes.Count -gt 0) {
+                        if ($printer.Filters) {
                             $printerItem.Description += " (Has ILT)"
                         }
                         
@@ -538,7 +605,21 @@ if ($WhatIf) {
     Write-Host "`nWhat-If mode: No changes were made" -ForegroundColor Yellow
     Write-Host "Remove -WhatIf to perform the actual import" -ForegroundColor Yellow
 } elseif ($totalImported -gt 0) {
-    Write-Host "`nUse Save-ProUConfig to save changes to ProfileUnity" -ForegroundColor Cyan
+    Write-Host "`nConfiguration updated in memory" -ForegroundColor Green
+    Write-Host "Use Save-ProUConfig to save changes" -ForegroundColor Yellow
+    
+    # Offer to save
+    $save = Read-Host "`nSave configuration now? (Y/N)"
+    if ($save -eq 'Y') {
+        try {
+            Save-ProUConfig
+            Write-Host "Configuration saved successfully!" -ForegroundColor Green
+        } catch {
+            Write-Error "Failed to save configuration: $_"
+        }
+    } else {
+        Write-Host "Configuration not saved. Use Save-ProUConfig when ready." -ForegroundColor Yellow
+    }
 } else {
     Write-Host "`nNo items were imported." -ForegroundColor Yellow
 }

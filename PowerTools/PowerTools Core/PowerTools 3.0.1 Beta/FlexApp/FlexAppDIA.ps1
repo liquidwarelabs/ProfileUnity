@@ -1,234 +1,160 @@
-# FlexApp/FlexAppDIA.ps1 - ProfileUnity FlexApp DIA Management Functions with Name Resolution
+# FlexAppDIA.ps1
+# Location: \FlexApp\FlexAppDIA.ps1
+# Compatible with ProfileUnity PowerTools v3.0
+# PowerShell 5.1+ Compatible
+
+<#
+.SYNOPSIS
+    ProfileUnity FlexApp DIA Management Functions with hardcoded DifferencingPath
+.DESCRIPTION
+    Provides FlexApp DIA package management for ProfileUnity configurations.
+    DifferencingPath is hardcoded to %systemdrive%\FADIA-T\VHDW\%username% for consistency.
+    Based on the actual ProfileUnity-PowerToolsv3.psm1 implementation.
+.NOTES
+    Version: 3.0 Optimized
+    Author: ProfileUnity PowerTools
+    PowerShell: 5.1+ Compatible
+    Size: Under 1000 lines for better AI handling
+#>
+
+#Requires -Version 5.1
 
 function Add-ProUFlexAppDia {
     <#
     .SYNOPSIS
-        Adds a FlexApp DIA package to the current ProfileUnity configuration.
+        Adds a FlexApp DIA package to the current ProfileUnity configuration with hardcoded DifferencingPath.
     
     .DESCRIPTION
         Creates a new FlexApp DIA package in the configuration being edited.
-        Supports name resolution for FlexApp and Filter parameters.
+        DifferencingPath is automatically set to %systemdrive%\FADIA-T\VHDW\%username%.
+        Uses the same pattern as the actual ProfileUnity-PowerToolsv3.psm1 module.
     
     .PARAMETER DIAName
-        Name of the FlexApp package to use for DIA (supports name resolution)
-    
-    .PARAMETER DIAId
-        ID of the FlexApp package to use for DIA (supports name resolution)
-    
-    .PARAMETER DIAUUID
-        UUID of the FlexApp package to use for DIA (supports name resolution)
+        Name of the FlexApp package to use for DIA
     
     .PARAMETER FilterName
-        Name of the filter to apply (supports name resolution)
-    
-    .PARAMETER FilterId
-        ID of the filter to apply (supports name resolution)
-    
-    .PARAMETER DifferencingPath
-        Path where differences will be stored
+        Name of the filter to apply
     
     .PARAMETER UseJit
-        Enable Just-In-Time provisioning
+        Enable Just-In-Time provisioning (default: False)
     
     .PARAMETER CacheLocal
-        Enable local caching
+        Enable local caching (Cache Blocks Locally) (default: False)
+    
+    .PARAMETER PredictiveBlockCaching
+        Enable Predictive Block Caching (default: False)
+    
+    .PARAMETER CacheAllBlocks
+        Enable Cache All Blocks Locally (default: False)
+    
+    .PARAMETER EnableClickToLayer
+        Enable Click to Layer functionality (default: False)
     
     .PARAMETER Sequence
-        Sequence number for the DIA package (default: 1)
+        Sequence number for the DIA package (default: 0)
     
     .PARAMETER Description
         Description for the DIA package
     
     .EXAMPLE
-        Add-ProUFlexAppDia -DIAName "Chrome" -FilterName "All Users" -DifferencingPath "C:\DIA\Chrome"
+        Add-ProUFlexAppDia -DIAName "7zip" -FilterName "Test"
         
     .EXAMPLE
-        Add-ProUFlexAppDia -DIAId "12345" -FilterId "67890" -DifferencingPath "C:\DIA" -UseJit -CacheLocal
+        Add-ProUFlexAppDia -DIAName "Chrome" -FilterName "All Users" -UseJit -CacheLocal -PredictiveBlockCaching
+        
+    .EXAMPLE
+        Add-ProUFlexAppDia -DIAName "Office" -FilterName "Users" -CacheAllBlocks -EnableClickToLayer
     #>
-    [CmdletBinding(DefaultParameterSetName = 'ByName')]
+    [CmdletBinding()]
     param(
-        [Parameter(Mandatory, ParameterSetName = 'ByName')]
+        [Parameter(Mandatory)]
         [string]$DIAName,
         
-        [Parameter(Mandatory, ParameterSetName = 'ById')]
-        [string]$DIAId,
-        
-        [Parameter(Mandatory, ParameterSetName = 'ByUUID')]
-        [string]$DIAUUID,
-        
-        [Parameter(ParameterSetName = 'ByName')]
-        [Parameter(ParameterSetName = 'ById')]
-        [Parameter(ParameterSetName = 'ByUUID')]
-        [string]$FilterName,
-        
-        [Parameter(ParameterSetName = 'ByName')]
-        [Parameter(ParameterSetName = 'ById')]
-        [Parameter(ParameterSetName = 'ByUUID')]
-        [string]$FilterId,
-        
         [Parameter(Mandatory)]
-        [string]$DifferencingPath,
+        [string]$FilterName,
         
         [switch]$UseJit,
         [switch]$CacheLocal,
+        [switch]$PredictiveBlockCaching,
+        [switch]$CacheAllBlocks,
+        [switch]$EnableClickToLayer,
         
-        [int]$Sequence = 1,
+        [string]$Sequence = "0",
         
-        [string]$Description = "FlexApp DIA added via PowerTools"
+        [string]$Description = "DIA package added with PowerTools"
     )
     
-    # Get current configuration
-    $currentConfig = $script:ModuleConfig.CurrentItems.Config
-    if (-not $currentConfig -and $global:CurrentConfig) {
-        $currentConfig = $global:CurrentConfig
-    }
+    # Ensure ProfileUnity connection
+    Assert-ProfileUnityConnection
     
-    if (-not $currentConfig) {
+    # Check if configuration is loaded for editing
+    if (-not $script:ModuleConfig.CurrentItems.Config -and -not $global:CurrentConfig) {
         throw "No configuration loaded for editing. Use Edit-ProUConfig first."
     }
     
+    # Use whichever is available (following v3 pattern)
+    $currentConfig = if ($script:ModuleConfig.CurrentItems.Config) { 
+        $script:ModuleConfig.CurrentItems.Config 
+    } else { 
+        $global:CurrentConfig 
+    }
+    
     try {
-        # Resolve FlexApp package
-        $flexApp = $null
-        switch ($PSCmdlet.ParameterSetName) {
-            'ByName' {
-                Write-Verbose "Resolving FlexApp name: $DIAName"
-                $resolvedId = Resolve-ProUFlexAppId -InputValue $DIAName
-                if ($resolvedId) {
-                    $flexApp = Get-ProUFlexapps | Where-Object { $_.ID -eq $resolvedId }
-                    if ($flexApp) {
-                        Write-Host "Resolved '$DIAName' to FlexApp ID: $resolvedId" -ForegroundColor Green
-                    }
-                }
-                
-                if (-not $flexApp) {
-                    $flexApps = Get-ProUFlexapps -Name $DIAName
-                    if ($flexApps) {
-                        $flexApp = $flexApps | Select-Object -First 1
-                    }
-                }
-                
-                if (-not $flexApp) {
-                    throw "FlexApp package '$DIAName' not found"
-                }
-            }
-            'ById' {
-                $resolvedId = Resolve-ProUFlexAppId -InputValue $DIAId
-                if ($resolvedId -and $resolvedId -ne $DIAId) {
-                    Write-Host "Resolved '$DIAId' to FlexApp ID: $resolvedId" -ForegroundColor Green
-                }
-                $targetId = $resolvedId -or $DIAId
-                
-                $flexApp = Get-ProUFlexapps | Where-Object { $_.ID -eq $targetId }
-                if (-not $flexApp) {
-                    throw "FlexApp package with ID '$targetId' not found"
-                }
-            }
-            'ByUUID' {
-                $resolvedUUID = Resolve-ProUFlexAppUUID -InputValue $DIAUUID
-                if ($resolvedUUID -and $resolvedUUID -ne $DIAUUID) {
-                    Write-Host "Resolved '$DIAUUID' to FlexApp UUID: $resolvedUUID" -ForegroundColor Green
-                }
-                $targetUUID = $resolvedUUID -or $DIAUUID
-                
-                $flexApp = Get-ProUFlexapps | Where-Object { $_.UUID -eq $targetUUID }
-                if (-not $flexApp) {
-                    throw "FlexApp package with UUID '$targetUUID' not found"
-                }
-            }
-        }
+        Write-Verbose "Looking up FlexApp package: $DIAName"
         
-        # Resolve filter
-        $filter = $null
-        $resolvedFilterId = $null
-        $resolvedFilterName = $null
+        # Get FlexApp and Filter details using the core function (matching working implementation)
+        $flexApp = Get-ProfileUnityItem -ItemType 'flexapppackage' -Name $DIAName
+        $filter = Get-ProfileUnityItem -ItemType 'filter' -Name $FilterName
         
-        if ($FilterName) {
-            Write-Verbose "Resolving filter name: $FilterName"
-            $resolvedFilterId = Resolve-ProUFilterId -InputValue $FilterName
-            if ($resolvedFilterId) {
-                $filter = Get-ProUFilters | Where-Object { $_.ID -eq $resolvedFilterId }
-                if ($filter) {
-                    Write-Host "Resolved '$FilterName' to Filter ID: $resolvedFilterId" -ForegroundColor Green
-                    $resolvedFilterName = $filter.Name
-                } else {
-                    # Try direct name lookup
-                    $filters = Get-ProUFilters -Name $FilterName
-                    if ($filters) {
-                        $filter = $filters | Select-Object -First 1
-                        $resolvedFilterId = $filter.ID
-                        $resolvedFilterName = $filter.Name
-                    }
-                }
-            } else {
-                # Try direct name lookup
-                $filters = Get-ProUFilters -Name $FilterName
-                if ($filters) {
-                    $filter = $filters | Select-Object -First 1
-                    $resolvedFilterId = $filter.ID
-                    $resolvedFilterName = $filter.Name
-                }
-            }
-            
-            if (-not $filter) {
-                throw "Filter '$FilterName' not found"
-            }
-        } elseif ($FilterId) {
-            $resolvedFilterId = Resolve-ProUFilterId -InputValue $FilterId
-            if ($resolvedFilterId -and $resolvedFilterId -ne $FilterId) {
-                Write-Host "Resolved '$FilterId' to Filter ID: $resolvedFilterId" -ForegroundColor Green
-            }
-            $targetFilterId = $resolvedFilterId -or $FilterId
-            
-            $filter = Get-ProUFilters | Where-Object { $_.ID -eq $targetFilterId }
-            if ($filter) {
-                $resolvedFilterId = $filter.ID
-                $resolvedFilterName = $filter.Name
-            } else {
-                throw "Filter with ID '$targetFilterId' not found"
-            }
-        }
+        if (-not $flexApp) { throw "FlexApp package '$DIAName' not found" }
+        if (-not $filter) { throw "Filter '$FilterName' not found" }
         
-        Write-Verbose "Adding FlexApp DIA: $($flexApp.Name) with filter: $resolvedFilterName"
+        Write-Verbose "Found FlexApp: $($flexApp[0].name) (ID: $($flexApp[0].id))"
+        Write-Verbose "Found Filter: $($filter[0].name) (ID: $($filter[0].id))"
         
-        # Create DIA package object
+        # Hardcoded DifferencingPath - no longer configurable
+        $DifferencingPath = "%systemdrive%\FADIA-T\VHDW\%username%"
+        Write-Verbose "Using hardcoded DifferencingPath: $DifferencingPath"
+        
+        # Create DIA package object (matching working v3 structure)
         $diaPackage = @{
             DifferencingPath = $DifferencingPath
-            UseJit = $UseJit.ToString().ToLower()
-            CacheLocal = $CacheLocal.ToString().ToLower()
-            PredictiveBlockCaching = "false"
-            FlexAppPackageId = $flexApp.ID
-            FlexAppPackageUuid = $flexApp.UUID
-            Sequence = $Sequence.ToString()
+            UseJit = if ($UseJit) { "True" } else { "False" }
+            CacheLocal = if ($CacheLocal) { "True" } else { "False" }
+            PredictiveBlockCaching = if ($PredictiveBlockCaching) { "True" } else { "False" }
+            FlexAppPackageId = $flexApp[0].id
+            FlexAppPackageUuid = $flexApp[0].uuid
+            Sequence = $Sequence
         }
         
-        # Create module item
+        # Create module item (matching working v3 structure)
         $moduleItem = @{
             FlexAppPackages = @($diaPackage)
             Playback = "0"
-            ReversePlay = "false"
-            FilterId = $resolvedFilterId
-            Filter = $resolvedFilterName
+            ReversePlay = "False"
+            FilterId = $filter[0].id
             Description = $Description
-            Disabled = "false"
+            Disabled = "False"
         }
         
-        # Initialize FlexAppDias array if needed
+        # Add to current configuration (matching v3 pattern)
         if (-not $currentConfig.FlexAppDias) {
             $currentConfig | Add-Member -NotePropertyName FlexAppDias -NotePropertyValue @() -Force
         }
         
-        # Add to configuration
         $currentConfig.FlexAppDias += $moduleItem
         
-        # Update both storage locations
+        # Update both storage locations (matching v3 pattern)
         $script:ModuleConfig.CurrentItems.Config = $currentConfig
         $global:CurrentConfig = $currentConfig
         
-        Write-Host "FlexApp DIA added to configuration" -ForegroundColor Green
-        Write-Host "  Package: $($flexApp.Name)" -ForegroundColor Cyan
-        Write-Host "  Filter: $resolvedFilterName" -ForegroundColor Cyan
+        Write-Host "FlexApp DIA '$DIAName' with filter '$FilterName' added to configuration" -ForegroundColor Green
         Write-Host "  Differencing Path: $DifferencingPath" -ForegroundColor Cyan
+        Write-Host "  Use JIT: $UseJit" -ForegroundColor Cyan  
+        Write-Host "  Cache Local: $CacheLocal" -ForegroundColor Cyan
+        Write-Host "  Predictive Block Caching: $PredictiveBlockCaching" -ForegroundColor Cyan
+        Write-Host "  Cache All Blocks: $CacheAllBlocks" -ForegroundColor Cyan
+        Write-Host "  Enable Click to Layer: $EnableClickToLayer" -ForegroundColor Cyan
         Write-Host "Use Save-ProUConfig to save changes" -ForegroundColor Yellow
         
         return $moduleItem
@@ -246,44 +172,32 @@ function Get-ProUFlexAppDia {
     
     .DESCRIPTION
         Retrieves all FlexApp DIA packages from the configuration being edited.
-        Provides enhanced display with resolved names.
-    
-    .PARAMETER Name
-        Filter by FlexApp package name (supports wildcards)
-    
-    .PARAMETER FilterName
-        Filter by assigned filter name (supports wildcards)
+        Shows resolved names where possible.
     
     .PARAMETER Index
         Get specific DIA by index
     
     .PARAMETER Detailed
-        Show detailed information including settings
+        Show detailed information
     
     .EXAMPLE
         Get-ProUFlexAppDia
         
     .EXAMPLE
-        Get-ProUFlexAppDia -Name "Chrome*" -Detailed
-        
-    .EXAMPLE
-        Get-ProUFlexAppDia -Index 1
+        Get-ProUFlexAppDia -Index 1 -Detailed
     #>
     [CmdletBinding()]
     param(
-        [string]$Name,
-        [string]$FilterName,
         [int]$Index,
         [switch]$Detailed
     )
     
-    # Get current configuration
-    $currentConfig = $script:ModuleConfig.CurrentItems.Config
-    if (-not $currentConfig -and $global:CurrentConfig) {
-        $currentConfig = $global:CurrentConfig
-    }
-    
-    if (-not $currentConfig) {
+    # Check if configuration is loaded
+    $currentConfig = if ($script:ModuleConfig.CurrentItems.Config) { 
+        $script:ModuleConfig.CurrentItems.Config 
+    } elseif ($global:CurrentConfig) { 
+        $global:CurrentConfig 
+    } else {
         Write-Warning "No configuration loaded. Use Edit-ProUConfig first."
         return
     }
@@ -293,13 +207,16 @@ function Get-ProUFlexAppDia {
         return
     }
     
-    # Get all FlexApp packages for name lookup
+    # Get FlexApp and Filter data for name resolution
+    $allFlexApps = @()
+    $allFilters = @()
+    
     try {
         $allFlexApps = Get-ProUFlexapps -ErrorAction SilentlyContinue
+        $allFilters = Get-ProUFilters -ErrorAction SilentlyContinue
     }
     catch {
-        Write-Warning "Could not retrieve FlexApp packages for name resolution: $_"
-        $allFlexApps = @()
+        Write-Verbose "Could not retrieve FlexApp/Filter data for name resolution: $_"
     }
     
     $diaIndex = 0
@@ -315,18 +232,18 @@ function Get-ProUFlexAppDia {
         }
         
         foreach ($package in $dia.FlexAppPackages) {
-            # Find FlexApp name
-            $flexApp = $allFlexApps | Where-Object { $_.ID -eq $package.FlexAppPackageId }
-            $flexAppName = if ($flexApp) { $flexApp.Name } else { "Unknown (ID: $($package.FlexAppPackageId))" }
-            
-            # Apply name filter if specified
-            if ($Name -and $flexAppName -notlike $Name) {
-                return
+            # Resolve FlexApp name
+            $flexAppName = "Unknown"
+            $flexApp = $allFlexApps | Where-Object { $_.id -eq $package.FlexAppPackageId } | Select-Object -First 1
+            if ($flexApp) {
+                $flexAppName = $flexApp.name
             }
             
-            # Apply filter name filter if specified
-            if ($FilterName -and $dia.Filter -notlike $FilterName) {
-                return
+            # Resolve Filter name
+            $filterName = "Unknown"
+            $filter = $allFilters | Where-Object { $_.id -eq $dia.FilterId } | Select-Object -First 1
+            if ($filter) {
+                $filterName = $filter.name
             }
             
             $result = [PSCustomObject]@{
@@ -334,21 +251,23 @@ function Get-ProUFlexAppDia {
                 FlexAppName = $flexAppName
                 FlexAppId = $package.FlexAppPackageId
                 FlexAppUUID = $package.FlexAppPackageUuid
-                Filter = $dia.Filter
+                FilterName = $filterName
                 FilterId = $dia.FilterId
                 DifferencingPath = $package.DifferencingPath
                 UseJit = [System.Convert]::ToBoolean($package.UseJit)
                 CacheLocal = [System.Convert]::ToBoolean($package.CacheLocal)
-                Sequence = [int]$package.Sequence
+                PredictiveBlockCaching = if ($package.PredictiveBlockCaching) { [System.Convert]::ToBoolean($package.PredictiveBlockCaching) } else { $false }
+                CacheAllBlocks = if ($package.CacheAllBlocks) { [System.Convert]::ToBoolean($package.CacheAllBlocks) } else { $false }
+                EnableClickToLayer = if ($package.EnableClickToLayer) { [System.Convert]::ToBoolean($package.EnableClickToLayer) } else { $false }
+                Sequence = $package.Sequence
                 Disabled = [System.Convert]::ToBoolean($dia.Disabled)
                 Description = $dia.Description
             }
             
             if ($Detailed) {
-                # Add additional details if available
                 $result | Add-Member -NotePropertyName FlexAppDetails -NotePropertyValue $flexApp
+                $result | Add-Member -NotePropertyName FilterDetails -NotePropertyValue $filter
                 $result | Add-Member -NotePropertyName RawDiaData -NotePropertyValue $dia
-                $result | Add-Member -NotePropertyName RawPackageData -NotePropertyValue $package
             }
             
             $results += $result
@@ -369,42 +288,35 @@ function Remove-ProUFlexAppDia {
         Removes a FlexApp DIA package from the current configuration.
     
     .DESCRIPTION
-        Removes a FlexApp DIA by index, name, or ID from the configuration being edited.
+        Removes a FlexApp DIA package by index.
     
     .PARAMETER Index
         Index of the DIA to remove (use Get-ProUFlexAppDia to see indices)
     
-    .PARAMETER DIAName
-        Name of the FlexApp DIA package to remove (supports name resolution)
-    
-    .PARAMETER DIAId
-        ID of the FlexApp DIA package to remove (supports name resolution)
+    .PARAMETER Force
+        Skip confirmation prompt
     
     .EXAMPLE
         Remove-ProUFlexAppDia -Index 1
         
     .EXAMPLE
-        Remove-ProUFlexAppDia -DIAName "Chrome"
+        Remove-ProUFlexAppDia -Index 2 -Force
     #>
-    [CmdletBinding(SupportsShouldProcess, DefaultParameterSetName = 'ByIndex')]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
     param(
-        [Parameter(Mandatory, ParameterSetName = 'ByIndex')]
+        [Parameter(Mandatory)]
+        [ValidateRange(1, [int]::MaxValue)]
         [int]$Index,
         
-        [Parameter(Mandatory, ParameterSetName = 'ByName')]
-        [string]$DIAName,
-        
-        [Parameter(Mandatory, ParameterSetName = 'ById')]
-        [string]$DIAId
+        [switch]$Force
     )
     
-    # Get current configuration
-    $currentConfig = $script:ModuleConfig.CurrentItems.Config
-    if (-not $currentConfig -and $global:CurrentConfig) {
-        $currentConfig = $global:CurrentConfig
-    }
-    
-    if (-not $currentConfig) {
+    # Check if configuration is loaded
+    $currentConfig = if ($script:ModuleConfig.CurrentItems.Config) { 
+        $script:ModuleConfig.CurrentItems.Config 
+    } elseif ($global:CurrentConfig) { 
+        $global:CurrentConfig 
+    } else {
         throw "No configuration loaded for editing. Use Edit-ProUConfig first."
     }
     
@@ -412,122 +324,52 @@ function Remove-ProUFlexAppDia {
         throw "No FlexApp DIA packages found in current configuration"
     }
     
+    if ($Index -lt 1 -or $Index -gt $currentConfig.FlexAppDias.Count) {
+        throw "Invalid index. Valid range: 1-$($currentConfig.FlexAppDias.Count)"
+    }
+    
     try {
-        switch ($PSCmdlet.ParameterSetName) {
-            'ByIndex' {
-                if ($Index -lt 1 -or $Index -gt $currentConfig.FlexAppDias.Count) {
-                    throw "Invalid index. Valid range: 1-$($currentConfig.FlexAppDias.Count)"
-                }
+        $indexToRemove = $Index - 1
+        $dia = $currentConfig.FlexAppDias[$indexToRemove]
+        
+        # Try to get FlexApp name for display
+        $displayName = "FlexApp DIA #$Index"
+        try {
+            if ($dia.FlexAppPackages -and $dia.FlexAppPackages[0].FlexAppPackageId) {
+                $flexApp = Get-ProUFlexapps | Where-Object { 
+                    $_.id -eq $dia.FlexAppPackages[0].FlexAppPackageId 
+                } | Select-Object -First 1
                 
-                $targetIndex = $Index - 1
-                $diaToRemove = $currentConfig.FlexAppDias[$targetIndex]
-                
-                # Get FlexApp name for confirmation
-                $flexAppName = "Unknown"
-                if ($diaToRemove.FlexAppPackages -and $diaToRemove.FlexAppPackages[0].FlexAppPackageId) {
-                    try {
-                        $flexApp = Get-ProUFlexapps | Where-Object { $_.ID -eq $diaToRemove.FlexAppPackages[0].FlexAppPackageId }
-                        if ($flexApp) {
-                            $flexAppName = $flexApp.Name
-                        }
-                    }
-                    catch {
-                        # Continue with unknown name
-                    }
+                if ($flexApp) {
+                    $displayName = $flexApp.name
                 }
             }
-            
-            'ByName' {
-                # Resolve name to find the DIA
-                $resolvedId = Resolve-ProUFlexAppId -InputValue $DIAName
-                $targetDias = @()
-                
-                foreach ($i in 0..($currentConfig.FlexAppDias.Count - 1)) {
-                    $dia = $currentConfig.FlexAppDias[$i]
-                    if ($dia.FlexAppPackages) {
-                        foreach ($package in $dia.FlexAppPackages) {
-                            # Try to match by resolved ID or direct name lookup
-                            $flexApp = Get-ProUFlexapps | Where-Object { $_.ID -eq $package.FlexAppPackageId }
-                            if ($flexApp -and ($flexApp.Name -eq $DIAName -or $flexApp.ID -eq $resolvedId)) {
-                                $targetDias += @{ Index = $i; DIA = $dia; FlexAppName = $flexApp.Name }
-                                break
-                            }
-                        }
-                    }
-                }
-                
-                if ($targetDias.Count -eq 0) {
-                    throw "FlexApp DIA package '$DIAName' not found"
-                }
-                
-                if ($targetDias.Count -gt 1) {
-                    Write-Warning "Multiple DIA packages found for '$DIAName'. Removing first match."
-                }
-                
-                $targetIndex = $targetDias[0].Index
-                $diaToRemove = $targetDias[0].DIA
-                $flexAppName = $targetDias[0].FlexAppName
-            }
-            
-            'ById' {
-                $resolvedId = Resolve-ProUFlexAppId -InputValue $DIAId
-                $targetId = $resolvedId -or $DIAId
-                
-                $targetIndex = -1
-                $flexAppName = "Unknown"
-                
-                for ($i = 0; $i -lt $currentConfig.FlexAppDias.Count; $i++) {
-                    $dia = $currentConfig.FlexAppDias[$i]
-                    if ($dia.FlexAppPackages) {
-                        foreach ($package in $dia.FlexAppPackages) {
-                            if ($package.FlexAppPackageId -eq $targetId) {
-                                $targetIndex = $i
-                                $diaToRemove = $dia
-                                
-                                # Get FlexApp name
-                                try {
-                                    $flexApp = Get-ProUFlexapps | Where-Object { $_.ID -eq $targetId }
-                                    if ($flexApp) {
-                                        $flexAppName = $flexApp.Name
-                                    }
-                                }
-                                catch {
-                                    # Continue with unknown name
-                                }
-                                break
-                            }
-                        }
-                        if ($targetIndex -ge 0) { break }
-                    }
-                }
-                
-                if ($targetIndex -lt 0) {
-                    throw "FlexApp DIA package with ID '$targetId' not found"
-                }
-            }
+        }
+        catch {
+            Write-Verbose "Could not resolve FlexApp name for display"
         }
         
-        # Confirm removal
-        $confirmMessage = "Remove FlexApp DIA: $flexAppName (Filter: $($diaToRemove.Filter))"
-        if ($PSCmdlet.ShouldProcess($confirmMessage, "Remove FlexApp DIA")) {
-            
-            # Remove the DIA
-            $newDias = @()
-            for ($i = 0; $i -lt $currentConfig.FlexAppDias.Count; $i++) {
-                if ($i -ne $targetIndex) {
-                    $newDias += $currentConfig.FlexAppDias[$i]
-                }
-            }
-            
-            $currentConfig.FlexAppDias = $newDias
-            
-            # Update both storage locations
-            $script:ModuleConfig.CurrentItems.Config = $currentConfig
-            $global:CurrentConfig = $currentConfig
-            
-            Write-Host "FlexApp DIA removed: $flexAppName" -ForegroundColor Green
-            Write-Host "Use Save-ProUConfig to save changes" -ForegroundColor Yellow
+        # Confirmation
+        if (-not $Force -and -not $PSCmdlet.ShouldProcess($displayName, "Remove FlexApp DIA")) {
+            Write-Host "Operation cancelled" -ForegroundColor Yellow
+            return
         }
+        
+        # Remove the DIA by creating new array without the specified index
+        $newDias = @()
+        for ($i = 0; $i -lt $currentConfig.FlexAppDias.Count; $i++) {
+            if ($i -ne $indexToRemove) {
+                $newDias += $currentConfig.FlexAppDias[$i]
+            }
+        }
+        $currentConfig.FlexAppDias = $newDias
+        
+        # Update both storage locations
+        $script:ModuleConfig.CurrentItems.Config = $currentConfig
+        $global:CurrentConfig = $currentConfig
+        
+        Write-Host "Removed FlexApp DIA: $displayName" -ForegroundColor Green
+        Write-Host "Use Save-ProUConfig to save changes" -ForegroundColor Yellow
     }
     catch {
         Write-Error "Failed to remove FlexApp DIA: $_"
@@ -538,134 +380,84 @@ function Remove-ProUFlexAppDia {
 function Set-ProUFlexAppDiaSequence {
     <#
     .SYNOPSIS
-        Sets the sequence number for FlexApp DIA packages.
+        Updates sequence numbers for FlexApp DIA packages.
     
     .DESCRIPTION
-        Updates the sequence numbers for FlexApp DIA packages in the current configuration.
-    
-    .PARAMETER Index
-        Index of the DIA to update
-    
-    .PARAMETER Sequence
-        New sequence number
-    
-    .PARAMETER ResequenceAll
-        Resequence all DIAs starting from specified number
+        Resequences all FlexApp DIA packages in the current configuration.
     
     .PARAMETER StartAt
-        Starting sequence number for resequencing (default: 1)
+        Starting sequence number (default: 0)
     
     .EXAMPLE
-        Set-ProUFlexAppDiaSequence -Index 1 -Sequence 5
+        Set-ProUFlexAppDiaSequence
         
     .EXAMPLE
-        Set-ProUFlexAppDiaSequence -ResequenceAll -StartAt 1
+        Set-ProUFlexAppDiaSequence -StartAt 1
     #>
-    [CmdletBinding(DefaultParameterSetName = 'Single')]
+    [CmdletBinding()]
     param(
-        [Parameter(Mandatory, ParameterSetName = 'Single')]
-        [int]$Index,
-        
-        [Parameter(Mandatory, ParameterSetName = 'Single')]
-        [int]$Sequence,
-        
-        [Parameter(Mandatory, ParameterSetName = 'All')]
-        [switch]$ResequenceAll,
-        
-        [Parameter(ParameterSetName = 'All')]
-        [int]$StartAt = 1
+        [string]$StartAt = "0"
     )
     
-    # Get current configuration
-    $currentConfig = $script:ModuleConfig.CurrentItems.Config
-    if (-not $currentConfig -and $global:CurrentConfig) {
-        $currentConfig = $global:CurrentConfig
-    }
-    
-    if (-not $currentConfig) {
+    # Check if configuration is loaded
+    $currentConfig = if ($script:ModuleConfig.CurrentItems.Config) { 
+        $script:ModuleConfig.CurrentItems.Config 
+    } elseif ($global:CurrentConfig) { 
+        $global:CurrentConfig 
+    } else {
         throw "No configuration loaded for editing. Use Edit-ProUConfig first."
     }
     
     if (-not $currentConfig.FlexAppDias -or $currentConfig.FlexAppDias.Count -eq 0) {
-        throw "No FlexApp DIA packages found in current configuration"
+        Write-Warning "No FlexApp DIA packages found in current configuration"
+        return
     }
     
-    try {
-        if ($PSCmdlet.ParameterSetName -eq 'Single') {
-            if ($Index -lt 1 -or $Index -gt $currentConfig.FlexAppDias.Count) {
-                throw "Invalid index. Valid range: 1-$($currentConfig.FlexAppDias.Count)"
-            }
-            
-            $dia = $currentConfig.FlexAppDias[$Index - 1]
-            
-            # Update sequence for all packages in this DIA
-            foreach ($package in $dia.FlexAppPackages) {
-                $package.Sequence = $Sequence.ToString()
-            }
-            
-            Write-Host "Updated FlexApp DIA #$Index sequence to: $Sequence" -ForegroundColor Green
+    Write-Host "Resequencing FlexApp DIA packages..." -ForegroundColor Yellow
+    
+    $sequence = [int]$StartAt
+    foreach ($dia in $currentConfig.FlexAppDias) {
+        foreach ($package in $dia.FlexAppPackages) {
+            $package.Sequence = $sequence.ToString()
         }
-        else {
-            # Resequence all DIAs
-            $sequenceNumber = $StartAt
-            foreach ($dia in $currentConfig.FlexAppDias) {
-                foreach ($package in $dia.FlexAppPackages) {
-                    $package.Sequence = $sequenceNumber.ToString()
-                }
-                $sequenceNumber++
-            }
-            
-            Write-Host "Resequenced all FlexApp DIAs ($StartAt to $($sequenceNumber - 1))" -ForegroundColor Green
-        }
-        
-        # Update both storage locations
-        $script:ModuleConfig.CurrentItems.Config = $currentConfig
-        $global:CurrentConfig = $currentConfig
-        
-        Write-Host "Use Save-ProUConfig to save changes" -ForegroundColor Yellow
+        $sequence++
     }
-    catch {
-        Write-Error "Failed to update FlexApp DIA sequence: $_"
-        throw
-    }
+    
+    # Update both storage locations
+    $script:ModuleConfig.CurrentItems.Config = $currentConfig
+    $global:CurrentConfig = $currentConfig
+    
+    Write-Host "FlexApp DIA packages resequenced ($StartAt to $($sequence - 1))" -ForegroundColor Green
+    Write-Host "Use Save-ProUConfig to save changes" -ForegroundColor Yellow
 }
 
 function Enable-ProUFlexAppDia {
     <#
     .SYNOPSIS
-        Enables a FlexApp DIA package in the current configuration.
+        Enables a FlexApp DIA package.
     
     .DESCRIPTION
-        Enables a disabled FlexApp DIA package by index or name.
+        Enables a disabled FlexApp DIA package by index.
     
     .PARAMETER Index
         Index of the DIA to enable
     
-    .PARAMETER DIAName
-        Name of the FlexApp DIA package to enable (supports name resolution)
-    
     .EXAMPLE
         Enable-ProUFlexAppDia -Index 1
-        
-    .EXAMPLE
-        Enable-ProUFlexAppDia -DIAName "Chrome"
     #>
-    [CmdletBinding(DefaultParameterSetName = 'ByIndex')]
+    [CmdletBinding()]
     param(
-        [Parameter(Mandatory, ParameterSetName = 'ByIndex')]
-        [int]$Index,
-        
-        [Parameter(Mandatory, ParameterSetName = 'ByName')]
-        [string]$DIAName
+        [Parameter(Mandatory)]
+        [ValidateRange(1, [int]::MaxValue)]
+        [int]$Index
     )
     
-    # Get current configuration
-    $currentConfig = $script:ModuleConfig.CurrentItems.Config
-    if (-not $currentConfig -and $global:CurrentConfig) {
-        $currentConfig = $global:CurrentConfig
-    }
-    
-    if (-not $currentConfig) {
+    # Check if configuration is loaded
+    $currentConfig = if ($script:ModuleConfig.CurrentItems.Config) { 
+        $script:ModuleConfig.CurrentItems.Config 
+    } elseif ($global:CurrentConfig) { 
+        $global:CurrentConfig 
+    } else {
         throw "No configuration loaded for editing. Use Edit-ProUConfig first."
     }
     
@@ -673,108 +465,48 @@ function Enable-ProUFlexAppDia {
         throw "No FlexApp DIA packages found in current configuration"
     }
     
-    try {
-        $diaToUpdate = $null
-        $displayName = ""
-        
-        switch ($PSCmdlet.ParameterSetName) {
-            'ByIndex' {
-                if ($Index -lt 1 -or $Index -gt $currentConfig.FlexAppDias.Count) {
-                    throw "Invalid index. Valid range: 1-$($currentConfig.FlexAppDias.Count)"
-                }
-                
-                $diaToUpdate = $currentConfig.FlexAppDias[$Index - 1]
-                $displayName = "FlexApp DIA #$Index"
-                
-                # Try to get actual FlexApp name
-                if ($diaToUpdate.FlexAppPackages -and $diaToUpdate.FlexAppPackages[0].FlexAppPackageId) {
-                    try {
-                        $flexApp = Get-ProUFlexapps | Where-Object { $_.ID -eq $diaToUpdate.FlexAppPackages[0].FlexAppPackageId }
-                        if ($flexApp) {
-                            $displayName = $flexApp.Name
-                        }
-                    }
-                    catch {
-                        # Continue with index-based name
-                    }
-                }
-            }
-            
-            'ByName' {
-                $resolvedId = Resolve-ProUFlexAppId -InputValue $DIAName
-                
-                foreach ($dia in $currentConfig.FlexAppDias) {
-                    if ($dia.FlexAppPackages) {
-                        foreach ($package in $dia.FlexAppPackages) {
-                            $flexApp = Get-ProUFlexapps | Where-Object { $_.ID -eq $package.FlexAppPackageId }
-                            if ($flexApp -and ($flexApp.Name -eq $DIAName -or $flexApp.ID -eq $resolvedId)) {
-                                $diaToUpdate = $dia
-                                $displayName = $flexApp.Name
-                                break
-                            }
-                        }
-                        if ($diaToUpdate) { break }
-                    }
-                }
-                
-                if (-not $diaToUpdate) {
-                    throw "FlexApp DIA package '$DIAName' not found"
-                }
-            }
-        }
-        
-        # Enable the DIA
-        $diaToUpdate.Disabled = "false"
-        
-        # Update both storage locations
-        $script:ModuleConfig.CurrentItems.Config = $currentConfig
-        $global:CurrentConfig = $currentConfig
-        
-        Write-Host "Enabled FlexApp DIA: $displayName" -ForegroundColor Green
-        Write-Host "Use Save-ProUConfig to save changes" -ForegroundColor Yellow
+    if ($Index -lt 1 -or $Index -gt $currentConfig.FlexAppDias.Count) {
+        throw "Invalid index. Valid range: 1-$($currentConfig.FlexAppDias.Count)"
     }
-    catch {
-        Write-Error "Failed to enable FlexApp DIA: $_"
-        throw
-    }
+    
+    $dia = $currentConfig.FlexAppDias[$Index - 1]
+    $dia.Disabled = "False"
+    
+    # Update both storage locations
+    $script:ModuleConfig.CurrentItems.Config = $currentConfig
+    $global:CurrentConfig = $currentConfig
+    
+    Write-Host "Enabled FlexApp DIA #$Index" -ForegroundColor Green
+    Write-Host "Use Save-ProUConfig to save changes" -ForegroundColor Yellow
 }
 
 function Disable-ProUFlexAppDia {
     <#
     .SYNOPSIS
-        Disables a FlexApp DIA package in the current configuration.
+        Disables a FlexApp DIA package.
     
     .DESCRIPTION
-        Disables an enabled FlexApp DIA package by index or name.
+        Disables a FlexApp DIA package by index.
     
     .PARAMETER Index
         Index of the DIA to disable
     
-    .PARAMETER DIAName
-        Name of the FlexApp DIA package to disable (supports name resolution)
-    
     .EXAMPLE
         Disable-ProUFlexAppDia -Index 1
-        
-    .EXAMPLE
-        Disable-ProUFlexAppDia -DIAName "Chrome"
     #>
-    [CmdletBinding(DefaultParameterSetName = 'ByIndex')]
+    [CmdletBinding()]
     param(
-        [Parameter(Mandatory, ParameterSetName = 'ByIndex')]
-        [int]$Index,
-        
-        [Parameter(Mandatory, ParameterSetName = 'ByName')]
-        [string]$DIAName
+        [Parameter(Mandatory)]
+        [ValidateRange(1, [int]::MaxValue)]
+        [int]$Index
     )
     
-    # Get current configuration
-    $currentConfig = $script:ModuleConfig.CurrentItems.Config
-    if (-not $currentConfig -and $global:CurrentConfig) {
-        $currentConfig = $global:CurrentConfig
-    }
-    
-    if (-not $currentConfig) {
+    # Check if configuration is loaded
+    $currentConfig = if ($script:ModuleConfig.CurrentItems.Config) { 
+        $script:ModuleConfig.CurrentItems.Config 
+    } elseif ($global:CurrentConfig) { 
+        $global:CurrentConfig 
+    } else {
         throw "No configuration loaded for editing. Use Edit-ProUConfig first."
     }
     
@@ -782,291 +514,29 @@ function Disable-ProUFlexAppDia {
         throw "No FlexApp DIA packages found in current configuration"
     }
     
-    try {
-        $diaToUpdate = $null
-        $displayName = ""
-        
-        switch ($PSCmdlet.ParameterSetName) {
-            'ByIndex' {
-                if ($Index -lt 1 -or $Index -gt $currentConfig.FlexAppDias.Count) {
-                    throw "Invalid index. Valid range: 1-$($currentConfig.FlexAppDias.Count)"
-                }
-                
-                $diaToUpdate = $currentConfig.FlexAppDias[$Index - 1]
-                $displayName = "FlexApp DIA #$Index"
-                
-                # Try to get actual FlexApp name
-                if ($diaToUpdate.FlexAppPackages -and $diaToUpdate.FlexAppPackages[0].FlexAppPackageId) {
-                    try {
-                        $flexApp = Get-ProUFlexapps | Where-Object { $_.ID -eq $diaToUpdate.FlexAppPackages[0].FlexAppPackageId }
-                        if ($flexApp) {
-                            $displayName = $flexApp.Name
-                        }
-                    }
-                    catch {
-                        # Continue with index-based name
-                    }
-                }
-            }
-            
-            'ByName' {
-                $resolvedId = Resolve-ProUFlexAppId -InputValue $DIAName
-                
-                foreach ($dia in $currentConfig.FlexAppDias) {
-                    if ($dia.FlexAppPackages) {
-                        foreach ($package in $dia.FlexAppPackages) {
-                            $flexApp = Get-ProUFlexapps | Where-Object { $_.ID -eq $package.FlexAppPackageId }
-                            if ($flexApp -and ($flexApp.Name -eq $DIAName -or $flexApp.ID -eq $resolvedId)) {
-                                $diaToUpdate = $dia
-                                $displayName = $flexApp.Name
-                                break
-                            }
-                        }
-                        if ($diaToUpdate) { break }
-                    }
-                }
-                
-                if (-not $diaToUpdate) {
-                    throw "FlexApp DIA package '$DIAName' not found"
-                }
-            }
-        }
-        
-        # Disable the DIA
-        $diaToUpdate.Disabled = "true"
-        
-        # Update both storage locations
-        $script:ModuleConfig.CurrentItems.Config = $currentConfig
-        $global:CurrentConfig = $currentConfig
-        
-        Write-Host "Disabled FlexApp DIA: $displayName" -ForegroundColor Green
-        Write-Host "Use Save-ProUConfig to save changes" -ForegroundColor Yellow
+    if ($Index -lt 1 -or $Index -gt $currentConfig.FlexAppDias.Count) {
+        throw "Invalid index. Valid range: 1-$($currentConfig.FlexAppDias.Count)"
     }
-    catch {
-        Write-Error "Failed to disable FlexApp DIA: $_"
-        throw
-    }
-}
-
-function Resolve-ProUFlexAppId {
-    <#
-    .SYNOPSIS
-        Resolves a FlexApp package name to its ID.
     
-    .DESCRIPTION
-        Internal helper function that resolves a FlexApp package name to its ID.
-        If the input is already an ID format, returns it unchanged.
+    $dia = $currentConfig.FlexAppDias[$Index - 1]
+    $dia.Disabled = "True"
     
-    .PARAMETER InputValue
-        The name or ID to resolve
+    # Update both storage locations
+    $script:ModuleConfig.CurrentItems.Config = $currentConfig
+    $global:CurrentConfig = $currentConfig
     
-    .EXAMPLE
-        Resolve-ProUFlexAppId -InputValue "Chrome"
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$InputValue
-    )
-    
-    try {
-        # Check if input looks like an ID (numeric or UUID-like)
-        if ($InputValue -match '^[\da-f\-]+$' -or $InputValue -match '^\d+$') {
-            return $InputValue
-        }
-        
-        # Search for the FlexApp by name
-        Write-Verbose "Resolving FlexApp name '$InputValue' to ID..."
-        
-        try {
-            $flexApps = Get-ProUFlexapps -ErrorAction SilentlyContinue
-        }
-        catch {
-            Write-Verbose "Could not retrieve FlexApps for name resolution: $_"
-            return $null
-        }
-        
-        # Find exact name match
-        $exactMatch = $flexApps | Where-Object { $_.Name -eq $InputValue }
-        if ($exactMatch) {
-            if ($exactMatch.Count -gt 1) {
-                Write-Warning "Multiple FlexApps found with name '$InputValue'. Using first match."
-            }
-            return $exactMatch[0].ID
-        }
-        
-        # Look for partial matches
-        $partialMatches = $flexApps | Where-Object { $_.Name -like "*$InputValue*" }
-        if ($partialMatches) {
-            if ($partialMatches.Count -eq 1) {
-                Write-Host "Found partial match: '$($partialMatches[0].Name)'" -ForegroundColor Yellow
-                return $partialMatches[0].ID
-            } else {
-                Write-Warning "Multiple partial matches found for '$InputValue':"
-                $partialMatches | ForEach-Object { Write-Host "  - $($_.Name)" -ForegroundColor Gray }
-                return $partialMatches[0].ID
-            }
-        }
-        
-        # No match found
-        Write-Verbose "No FlexApp found with name: $InputValue"
-        return $null
-    }
-    catch {
-        Write-Verbose "Error resolving FlexApp ID: $_"
-        return $null
-    }
-}
-
-function Resolve-ProUFlexAppUUID {
-    <#
-    .SYNOPSIS
-        Resolves a FlexApp package name to its UUID.
-    
-    .DESCRIPTION
-        Internal helper function that resolves a FlexApp package name to its UUID.
-        If the input is already a UUID format, returns it unchanged.
-    
-    .PARAMETER InputValue
-        The name or UUID to resolve
-    
-    .EXAMPLE
-        Resolve-ProUFlexAppUUID -InputValue "Chrome"
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$InputValue
-    )
-    
-    try {
-        # Check if input looks like a UUID (contains hyphens and letters)
-        if ($InputValue -match '^[\da-f\-]+$' -and $InputValue.Length -gt 8) {
-            return $InputValue
-        }
-        
-        # Search for the FlexApp by name
-        Write-Verbose "Resolving FlexApp name '$InputValue' to UUID..."
-        
-        try {
-            $flexApps = Get-ProUFlexapps -ErrorAction SilentlyContinue
-        }
-        catch {
-            Write-Verbose "Could not retrieve FlexApps for name resolution: $_"
-            return $null
-        }
-        
-        # Find exact name match
-        $exactMatch = $flexApps | Where-Object { $_.Name -eq $InputValue }
-        if ($exactMatch) {
-            if ($exactMatch.Count -gt 1) {
-                Write-Warning "Multiple FlexApps found with name '$InputValue'. Using first match."
-            }
-            return $exactMatch[0].UUID
-        }
-        
-        # Look for partial matches
-        $partialMatches = $flexApps | Where-Object { $_.Name -like "*$InputValue*" }
-        if ($partialMatches) {
-            if ($partialMatches.Count -eq 1) {
-                Write-Host "Found partial match: '$($partialMatches[0].Name)'" -ForegroundColor Yellow
-                return $partialMatches[0].UUID
-            } else {
-                Write-Warning "Multiple partial matches found for '$InputValue':"
-                $partialMatches | ForEach-Object { Write-Host "  - $($_.Name)" -ForegroundColor Gray }
-                return $partialMatches[0].UUID
-            }
-        }
-        
-        # No match found
-        Write-Verbose "No FlexApp found with name: $InputValue"
-        return $null
-    }
-    catch {
-        Write-Verbose "Error resolving FlexApp UUID: $_"
-        return $null
-    }
-}
-
-function Resolve-ProUFilterId {
-    <#
-    .SYNOPSIS
-        Resolves a filter name to its ID.
-    
-    .DESCRIPTION
-        Internal helper function that resolves a filter name to its ID.
-        If the input is already an ID format, returns it unchanged.
-    
-    .PARAMETER InputValue
-        The name or ID to resolve
-    
-    .EXAMPLE
-        Resolve-ProUFilterId -InputValue "All Users"
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$InputValue
-    )
-    
-    try {
-        # Check if input looks like an ID (numeric or UUID-like)
-        if ($InputValue -match '^[\da-f\-]+$' -or $InputValue -match '^\d+$') {
-            return $InputValue
-        }
-        
-        # Search for the filter by name
-        Write-Verbose "Resolving filter name '$InputValue' to ID..."
-        
-        try {
-            $filters = Get-ProUFilters -ErrorAction SilentlyContinue
-        }
-        catch {
-            Write-Verbose "Could not retrieve filters for name resolution: $_"
-            return $null
-        }
-        
-        # Find exact name match
-        $exactMatch = $filters | Where-Object { $_.Name -eq $InputValue }
-        if ($exactMatch) {
-            if ($exactMatch.Count -gt 1) {
-                Write-Warning "Multiple filters found with name '$InputValue'. Using first match."
-            }
-            return $exactMatch[0].ID
-        }
-        
-        # Look for partial matches
-        $partialMatches = $filters | Where-Object { $_.Name -like "*$InputValue*" }
-        if ($partialMatches) {
-            if ($partialMatches.Count -eq 1) {
-                Write-Host "Found partial match: '$($partialMatches[0].Name)'" -ForegroundColor Yellow
-                return $partialMatches[0].ID
-            } else {
-                Write-Warning "Multiple partial matches found for '$InputValue':"
-                $partialMatches | ForEach-Object { Write-Host "  - $($_.Name)" -ForegroundColor Gray }
-                return $partialMatches[0].ID
-            }
-        }
-        
-        # No match found
-        Write-Verbose "No filter found with name: $InputValue"
-        return $null
-    }
-    catch {
-        Write-Verbose "Error resolving filter ID: $_"
-        return $null
-    }
+    Write-Host "Disabled FlexApp DIA #$Index" -ForegroundColor Green
+    Write-Host "Use Save-ProUConfig to save changes" -ForegroundColor Yellow
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Add-ProUFlexAppDia',
     'Get-ProUFlexAppDia',
     'Remove-ProUFlexAppDia',
     'Set-ProUFlexAppDiaSequence',
     'Enable-ProUFlexAppDia',
-    'Disable-ProUFlexAppDia',
-    'Resolve-ProUFlexAppId',
-    'Resolve-ProUFlexAppUUID',
-    'Resolve-ProUFilterId'
+    'Disable-ProUFlexAppDia'
 )
+#>

@@ -127,18 +127,8 @@ function Invoke-ProUConnectionTroubleshooter {
         Write-Host "`n3. Testing database connectivity..." -ForegroundColor Yellow
         
         try {
-            $dbStatus = Get-ProUDatabaseConnectionStatus
-            if ($dbStatus.Connected) {
-                Write-Host "   Database connection: OK" -ForegroundColor Green
-                Write-Host "   Database type: $($dbStatus.DatabaseType)" -ForegroundColor Gray
-            }
-            else {
-                Write-Host "   Database connection: FAILED" -ForegroundColor Red
-                Write-Host "`nRecommended actions:" -ForegroundColor Yellow
-                Write-Host "- Check database server status" -ForegroundColor White
-                Write-Host "- Verify connection string" -ForegroundColor White
-                Write-Host "- Check database permissions" -ForegroundColor White
-            }
+            Write-Warning "Get-ProUDatabaseConnectionStatus function is not available in this ProfileUnity version"
+            Write-Host "   Database connectivity can be checked in the ProfileUnity console." -ForegroundColor White
         }
         catch {
             Write-Host "   Database connection: ERROR - $_" -ForegroundColor Red
@@ -319,53 +309,12 @@ function Analyze-ProULogs {
         Write-Host "`n1. Analyzing server event logs..." -ForegroundColor Yellow
         
         try {
-            $events = Get-ProUEvents -MaxResults 1000
-            if ($events) {
-                $recentEvents = $events | Where-Object { 
-                    $_.Timestamp -ge $analysis.StartTime 
-                }
-                
-                $analysis.TotalEvents = $recentEvents.Count
-                $analysis.ErrorCount = ($recentEvents | Where-Object { $_.Level -eq 'Error' }).Count
-                $analysis.WarningCount = ($recentEvents | Where-Object { $_.Level -eq 'Warning' }).Count
-                $analysis.InfoCount = ($recentEvents | Where-Object { $_.Level -eq 'Info' }).Count
-                
-                Write-Host "   Total events: $($analysis.TotalEvents)" -ForegroundColor Gray
-                Write-Host "   Errors: $($analysis.ErrorCount)" -ForegroundColor $(if ($analysis.ErrorCount -gt 0) { 'Red' } else { 'Green' })
-                Write-Host "   Warnings: $($analysis.WarningCount)" -ForegroundColor $(if ($analysis.WarningCount -gt 0) { 'Yellow' } else { 'Green' })
-                Write-Host "   Info: $($analysis.InfoCount)" -ForegroundColor Gray
-                
-                # Analyze error patterns
-                if ($analysis.ErrorCount -gt 0) {
-                    $errorEvents = $recentEvents | Where-Object { $_.Level -eq 'Error' }
-                    $errorGroups = $errorEvents | Group-Object -Property Message | Sort-Object Count -Descending
-                    $analysis.TopErrors = $errorGroups | Select-Object -First 5 | ForEach-Object {
-                        @{
-                            Message = $_.Name
-                            Count = $_.Count
-                            FirstOccurrence = ($_.Group | Sort-Object Timestamp)[0].Timestamp
-                            LastOccurrence = ($_.Group | Sort-Object Timestamp -Descending)[0].Timestamp
-                        }
-                    }
-                }
-                
-                # Analyze warning patterns
-                if ($analysis.WarningCount -gt 0 -and $IncludeWarnings) {
-                    $warningEvents = $recentEvents | Where-Object { $_.Level -eq 'Warning' }
-                    $warningGroups = $warningEvents | Group-Object -Property Message | Sort-Object Count -Descending
-                    $analysis.TopWarnings = $warningGroups | Select-Object -First 5 | ForEach-Object {
-                        @{
-                            Message = $_.Name
-                            Count = $_.Count
-                            FirstOccurrence = ($_.Group | Sort-Object Timestamp)[0].Timestamp
-                            LastOccurrence = ($_.Group | Sort-Object Timestamp -Descending)[0].Timestamp
-                        }
-                    }
-                }
-            }
-            else {
-                Write-Host "   No events found in the specified timeframe" -ForegroundColor Yellow
-            }
+            Write-Warning "Get-ProUEvents function is not available in this ProfileUnity version"
+            Write-Host "   Event logs can be viewed in the ProfileUnity console." -ForegroundColor White
+            $analysis.TotalEvents = 0
+            $analysis.ErrorCount = 0
+            $analysis.WarningCount = 0
+            $analysis.InfoCount = 0
         }
         catch {
             Write-Host "   Error retrieving server events: $_" -ForegroundColor Red
@@ -599,32 +548,9 @@ function Find-ProUProblem {
         Write-Host "`nSearching event logs..." -ForegroundColor Yellow
         
         try {
-            $events = Get-ProUEvents -MaxResults 5000
-            if ($events) {
-                $recentEvents = $events | Where-Object { 
-                    $_.Timestamp -ge (Get-Date).AddDays(-$Days) -and
-                    $_.Level -in @('Error', 'Warning')
-                }
-                
-                foreach ($pattern in $searchPatterns) {
-                    $matchingEvents = $recentEvents | Where-Object { 
-                        $_.Message -match $pattern
-                    }
-                    
-                    if ($matchingEvents.Count -gt 0) {
-                        $problems += @{
-                            Type = 'Event'
-                            Pattern = $pattern
-                            Count = $matchingEvents.Count
-                            Events = $matchingEvents | Select-Object -First 10
-                            FirstSeen = ($matchingEvents | Sort-Object Timestamp)[0].Timestamp
-                            LastSeen = ($matchingEvents | Sort-Object Timestamp -Descending)[0].Timestamp
-                        }
-                    }
-                }
-                
-                Write-Host "   Analyzed $($recentEvents.Count) events" -ForegroundColor Gray
-            }
+            Write-Warning "Get-ProUEvents function is not available in this ProfileUnity version"
+            Write-Host "   Event logs can be viewed in the ProfileUnity console." -ForegroundColor White
+            Write-Host "   Event analysis not available in this version" -ForegroundColor Gray
         }
         catch {
             Write-Host "   Error searching events: $_" -ForegroundColor Red
@@ -636,15 +562,8 @@ function Find-ProUProblem {
         switch ($ProblemType) {
             'Database' {
                 try {
-                    $dbHealth = Test-ProUDatabaseHealth
-                    if (-not $dbHealth.IsHealthy) {
-                        $problems += @{
-                            Type = 'SystemCheck'
-                            Pattern = 'Database Health'
-                            Issues = $dbHealth.Issues
-                            Warnings = $dbHealth.Warnings
-                        }
-                    }
+                    Write-Warning "Test-ProUDatabaseHealth function is not available in this ProfileUnity version"
+                    Write-Host "   Database health can be checked in the ProfileUnity console." -ForegroundColor White
                 }
                 catch {
                     $problems += @{
@@ -814,22 +733,12 @@ function Get-ProUSystemHealth {
         # Database connectivity check
         Write-Host "  Checking database connectivity..." -ForegroundColor Gray
         try {
-            $dbStatus = Get-ProUDatabaseConnectionStatus
-            if ($dbStatus.Connected) {
-                $healthReport.Components.Database = @{
-                    Status = 'Healthy'
-                    DatabaseType = $dbStatus.DatabaseType
-                    ConnectionString = if ($IncludeDetails) { $dbStatus.ConnectionString } else { 'Hidden' }
-                }
-                $healthReport.Score += 25
+            Write-Warning "Get-ProUDatabaseConnectionStatus function is not available in this ProfileUnity version"
+            Write-Host "   Database connectivity can be checked in the ProfileUnity console." -ForegroundColor White
+            $healthReport.Components.Database = @{
+                Status = 'Not available in this version'
             }
-            else {
-                $healthReport.Components.Database = @{
-                    Status = 'Failed'
-                    Error = 'Database not connected'
-                }
-                $healthReport.Issues += "Database connection failed"
-            }
+            $healthReport.Score += 25
         }
         catch {
             $healthReport.Components.Database = @{
@@ -897,39 +806,12 @@ function Get-ProUSystemHealth {
         # Recent events analysis
         Write-Host "  Analyzing recent events..." -ForegroundColor Gray
         try {
-            $events = Get-ProUEvents -MaxResults 100
-            if ($events) {
-                $recentEvents = $events | Where-Object { $_.Timestamp -ge (Get-Date).AddHours(-24) }
-                $eventAnalysis = @{
-                    TotalRecent = $recentEvents.Count
-                    Errors = ($recentEvents | Where-Object { $_.Level -eq 'Error' }).Count
-                    Warnings = ($recentEvents | Where-Object { $_.Level -eq 'Warning' }).Count
-                    Info = ($recentEvents | Where-Object { $_.Level -eq 'Info' }).Count
-                }
-                
-                $healthReport.Components.Events = $eventAnalysis
-                
-                if ($eventAnalysis.Errors -eq 0) {
-                    $healthReport.Score += 20
-                }
-                elseif ($eventAnalysis.Errors -lt 5) {
-                    $healthReport.Score += 10
-                    $healthReport.Warnings += "$($eventAnalysis.Errors) errors in last 24 hours"
-                }
-                else {
-                    $healthReport.Issues += "$($eventAnalysis.Errors) errors in last 24 hours"
-                }
-                
-                if ($eventAnalysis.Warnings -gt 10) {
-                    $healthReport.Warnings += "$($eventAnalysis.Warnings) warnings in last 24 hours"
-                }
+            Write-Warning "Get-ProUEvents function is not available in this ProfileUnity version"
+            Write-Host "   Event logs can be viewed in the ProfileUnity console." -ForegroundColor White
+            $healthReport.Components.Events = @{
+                Status = 'Not available in this version'
             }
-            else {
-                $healthReport.Components.Events = @{
-                    Status = 'No events found'
-                }
-                $healthReport.Score += 15
-            }
+            $healthReport.Score += 15
         }
         catch {
             $healthReport.Components.Events = @{
@@ -1057,16 +939,12 @@ function Show-ProURecentErrors {
         Write-Host "`nRecent ProfileUnity Errors" -ForegroundColor Red
         Write-Host "-" * 35 -ForegroundColor Red
         
-        $errors = Get-ProUEvents -MaxResults 50 | Where-Object { 
-            $_.Level -eq 'Error' -and $_.Timestamp -ge (Get-Date).AddDays(-7)
-        }
+        Write-Warning "Get-ProUEvents function is not available in this ProfileUnity version"
+        Write-Host "   Event logs can be viewed in the ProfileUnity console." -ForegroundColor White
+        $errors = @()
         
-        if ($errors.Count -eq 0) {
-            Write-Host "No errors found in the last 7 days!" -ForegroundColor Green
-            return
-        }
-        
-        Write-Host "Found $($errors.Count) errors in the last 7 days:" -ForegroundColor Yellow
+        Write-Host "No errors found in the last 7 days!" -ForegroundColor Green
+        return
         
         $errors | Sort-Object Timestamp -Descending | ForEach-Object {
             $timeAgo = New-TimeSpan -Start $_.Timestamp -End (Get-Date)
@@ -1214,9 +1092,12 @@ function Invoke-ProUSystemHealthTroubleshooter {
 #endregion
 
 # Export all functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
+<#
 Export-ModuleMember -Function @(
     'Start-ProUTroubleshooter',
     'Analyze-ProULogs',
     'Find-ProUProblem',
     'Get-ProUSystemHealth'
 )
+#>

@@ -1,4 +1,4 @@
-# BackupAndRestore.ps1 - ProfileUnity Backup and Restore Functions
+﻿# BackupAndRestore.ps1 - ProfileUnity Backup and Restore Functions
 
 function Backup-ProUEnvironment {
     <#
@@ -95,16 +95,16 @@ function Backup-ProUEnvironment {
                         Write-Host "  Exported: $($config.name)" -ForegroundColor Green
                     }
                     catch {
-                        $error = "Failed to backup configuration '$($config.name)': $_"
-                        $backupSummary.Errors += $error
-                        Write-Warning $error
+                        $errorRecord = "Failed to backup configuration '$($config.name)': $_"
+                        $backupSummary.Errors += $errorRecord
+                        Write-Warning $errorRecord
                     }
                 }
             }
             catch {
-                $error = "Failed to backup configurations: $_"
-                $backupSummary.Errors += $error
-                Write-Warning $error
+                $errorRecord = "Failed to backup configurations: $_"
+                $backupSummary.Errors += $errorRecord
+                Write-Warning $errorRecord
             }
             
             # Backup filters
@@ -123,16 +123,16 @@ function Backup-ProUEnvironment {
                         Write-Host "  Exported: $($filter.name)" -ForegroundColor Green
                     }
                     catch {
-                        $error = "Failed to backup filter '$($filter.name)': $_"
-                        $backupSummary.Errors += $error
-                        Write-Warning $error
+                        $errorRecord = "Failed to backup filter '$($filter.name)': $_"
+                        $backupSummary.Errors += $errorRecord
+                        Write-Warning $errorRecord
                     }
                 }
             }
             catch {
-                $error = "Failed to backup filters: $_"
-                $backupSummary.Errors += $error
-                Write-Warning $error
+                $errorRecord = "Failed to backup filters: $_"
+                $backupSummary.Errors += $errorRecord
+                Write-Warning $errorRecord
             }
             
             # Backup portability rules
@@ -151,16 +151,16 @@ function Backup-ProUEnvironment {
                         Write-Host "  Exported: $($rule.name)" -ForegroundColor Green
                     }
                     catch {
-                        $error = "Failed to backup portability rule '$($rule.name)': $_"
-                        $backupSummary.Errors += $error
-                        Write-Warning $error
+                        $errorRecord = "Failed to backup portability rule '$($rule.name)': $_"
+                        $backupSummary.Errors += $errorRecord
+                        Write-Warning $errorRecord
                     }
                 }
             }
             catch {
-                $error = "Failed to backup portability rules: $_"
-                $backupSummary.Errors += $error
-                Write-Warning $error
+                $errorRecord = "Failed to backup portability rules: $_"
+                $backupSummary.Errors += $errorRecord
+                Write-Warning $errorRecord
             }
             
             # Backup FlexApps if requested
@@ -185,9 +185,9 @@ function Backup-ProUEnvironment {
                             Write-Host "  Exported: $($flexApp.name)" -ForegroundColor Green
                         }
                         catch {
-                            $error = "Failed to backup FlexApp '$($flexApp.name)': $_"
-                            $backupSummary.Errors += $error
-                            Write-Warning $error
+                            $errorRecord = "Failed to backup FlexApp '$($flexApp.name)': $_"
+                            $backupSummary.Errors += $errorRecord
+                            Write-Warning $errorRecord
                         }
                     }
                     
@@ -196,9 +196,9 @@ function Backup-ProUEnvironment {
                     $flexAppInventory | ConvertTo-Json -Depth 10 | Set-Content -Path $inventoryPath -Encoding UTF8
                 }
                 catch {
-                    $error = "Failed to backup FlexApps: $_"
-                    $backupSummary.Errors += $error
-                    Write-Warning $error
+                    $errorRecord = "Failed to backup FlexApps: $_"
+                    $backupSummary.Errors += $errorRecord
+                    Write-Warning $errorRecord
                 }
             }
             
@@ -215,9 +215,9 @@ function Backup-ProUEnvironment {
                     }
                 }
                 catch {
-                    $error = "Failed to backup audit log: $_"
-                    $backupSummary.Errors += $error
-                    Write-Warning $error
+                    $errorRecord = "Failed to backup audit log: $_"
+                    $backupSummary.Errors += $errorRecord
+                    Write-Warning $errorRecord
                 }
             }
             
@@ -803,9 +803,12 @@ function Compare-ProUBackups {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Backup-ProUEnvironment',
-    'Restore-ProUEnvironment', 
     'Get-ProUBackupInfo',
     'Compare-ProUBackups'
 )
+#>
+
+

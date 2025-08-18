@@ -1,4 +1,106 @@
 # Configuration.ps1 - ProfileUnity Configuration Management Functions
+# Location: \Configuration\Configuration.ps1
+# Compatible with: ProfileUnity PowerTools v3.0 / PowerShell 5.1+
+
+function Clean-AdmxText {
+    <#
+    .SYNOPSIS
+        Cleans problematic characters from ADMX text data to prevent JSON parsing errors.
+    
+    .DESCRIPTION
+        Removes or replaces characters that cause JSON parsing errors during Save-ProUConfig.
+        This includes control characters, invalid Unicode sequences, and other problematic characters.
+    
+    .PARAMETER Text
+        The text to clean
+    
+    .RETURNS
+        Cleaned text safe for JSON serialization
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Text
+    )
+    
+    if ([string]::IsNullOrEmpty($Text)) {
+        return $Text
+    }
+    
+    # More aggressive cleaning - only allow safe ASCII characters and basic punctuation
+    # This is more restrictive but should prevent all JSON parsing issues
+    $cleaned = $Text -replace '[^\x20-\x7E]', ' '
+    
+    # Replace multiple spaces with single space
+    $cleaned = $cleaned -replace '\s+', ' '
+    
+    # Trim whitespace
+    $cleaned = $cleaned.Trim()
+    
+    # Ensure the text is not too long (JSON has limits)
+    if ($cleaned.Length -gt 10000) {
+        $cleaned = $cleaned.Substring(0, 10000) + "..."
+    }
+    
+    return $cleaned
+}
+
+function Clean-AdmxObject {
+    <#
+    .SYNOPSIS
+        Recursively cleans all text properties in an ADMX object.
+    
+    .DESCRIPTION
+        Traverses through all properties of an ADMX object and cleans any string values
+        to prevent JSON parsing errors during Save-ProUConfig.
+    
+    .PARAMETER Object
+        The object to clean
+    
+    .RETURNS
+        The cleaned object
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$Object
+    )
+    
+    if ($null -eq $Object) {
+        return $Object
+    }
+    
+    # Handle arrays
+    if ($Object -is [array]) {
+        for ($i = 0; $i -lt $Object.Count; $i++) {
+            $Object[$i] = Clean-AdmxObject -Object $Object[$i]
+        }
+        return $Object
+    }
+    
+    # Handle PSCustomObject and other objects with properties
+    if ($Object -is [PSCustomObject] -or $Object.GetType().GetProperties()) {
+        $properties = $Object.PSObject.Properties
+        foreach ($prop in $properties) {
+            if ($prop.Value -is [string]) {
+                $prop.Value = Clean-AdmxText -Text $prop.Value
+            }
+            elseif ($prop.Value -is [array] -or $prop.Value -is [PSCustomObject]) {
+                $prop.Value = Clean-AdmxObject -Object $prop.Value
+            }
+        }
+        return $Object
+    }
+    
+    # Handle simple types
+    if ($Object -is [string]) {
+        return Clean-AdmxText -Text $Object
+    }
+    
+    return $Object
+}
+
+
 
 function Get-ProUConfig {
     <#
@@ -30,12 +132,21 @@ function Get-ProUConfig {
         Write-Verbose "Retrieving configurations..."
         $response = Invoke-ProfileUnityApi -Endpoint "configuration"
         
-        if (-not $response -or -not $response.Tag) {
+        # Handle different response formats consistently
+        $configs = if ($response.Tag.Rows) { 
+            $response.Tag.Rows 
+        } elseif ($response.tag) { 
+            $response.tag 
+        } elseif ($response) { 
+            $response 
+        } else { 
+            @() 
+        }
+        
+        if (-not $configs) {
             Write-Warning "No configurations found"
             return
         }
-        
-        $configs = $response.Tag.Rows
         
         # Filter by name if specified
         if ($Name) {
@@ -116,7 +227,13 @@ function Edit-ProUConfig {
         
         $configData = $response.tag
         
-        # Store in module config
+        # Store in module config with null checking
+        if (-not $script:ModuleConfig) {
+            $script:ModuleConfig = @{ CurrentItems = @{} }
+        }
+        if (-not $script:ModuleConfig.CurrentItems) {
+            $script:ModuleConfig.CurrentItems = @{}
+        }
         $script:ModuleConfig.CurrentItems.Config = $configData
         
         # Also set global variable for backward compatibility
@@ -124,19 +241,39 @@ function Edit-ProUConfig {
         
         if (-not $Quiet) {
             Write-Host "Configuration '$Name' loaded for editing" -ForegroundColor Green
-            Write-Host "Modules: $(if ($configData.modules) { $configData.modules.Count } else { 0 })" -ForegroundColor Cyan
             
-            # Show module summary
-            if ($configData.modules) {
-                $moduleSummary = $configData.modules | Group-Object -Property moduleType | 
-                    Select-Object Name, Count
-                $moduleSummary | ForEach-Object {
-                    Write-Host "  $($_.Name): $($_.Count)" -ForegroundColor Gray
+            # Count actual configuration components
+            $componentCount = 0
+            $components = @()
+            
+            if ($configData.FlexAppDias -and $configData.FlexAppDias.Count -gt 0) {
+                $componentCount += $configData.FlexAppDias.Count
+                $components += "FlexApp DIAs: $($configData.FlexAppDias.Count)"
+            }
+            if ($configData.Registries -and $configData.Registries.Count -gt 0) {
+                $componentCount += $configData.Registries.Count
+                $components += "Registry: $($configData.Registries.Count)"
+            }
+            if ($configData.AdministrativeTemplates -and $configData.AdministrativeTemplates.Count -gt 0) {
+                $componentCount += $configData.AdministrativeTemplates.Count
+                $components += "ADMX: $($configData.AdministrativeTemplates.Count)"
+            }
+            if ($configData.EnvironmentVariables -and $configData.EnvironmentVariables.Count -gt 0) {
+                $componentCount += $configData.EnvironmentVariables.Count
+                $components += "Environment: $($configData.EnvironmentVariables.Count)"
+            }
+            if ($configData.Shortcuts -and $configData.Shortcuts.Count -gt 0) {
+                $componentCount += $configData.Shortcuts.Count
+                $components += "Shortcuts: $($configData.Shortcuts.Count)"
+            }
+            
+            Write-Host "Components: $componentCount" -ForegroundColor Cyan
+            if ($components.Count -gt 0) {
+                $components | ForEach-Object {
+                    Write-Host "  $_" -ForegroundColor Gray
                 }
             }
         }
-        
-        return $configData
     }
     catch {
         Write-Error "Failed to edit configuration: $_"
@@ -161,47 +298,151 @@ function Save-ProUConfig {
     .EXAMPLE
         Save-ProUConfig -Force
     #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param([switch]$Force) 
+    
+    if ($Force) {
+        Save-ProfileUnityItem -ItemType 'configuration' -Force -Confirm:$false
+    } else {
+        Save-ProfileUnityItem -ItemType 'configuration'
+    }
+}
+
+function Save-ProfileUnityItem {
+    <#
+    .SYNOPSIS
+        Universal save function for ProfileUnity items.
+    
+    .DESCRIPTION
+        Saves any ProfileUnity item type with proper error handling.
+    #>
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
     param(
+        [Parameter(Mandatory)]
+        [ValidateSet('configuration', 'filter', 'portability', 'flexapppackage')]
+        [string]$ItemType,
+        
         [switch]$Force
     )
     
-    # Get current configuration
-    $currentConfig = $script:ModuleConfig.CurrentItems.Config
-    if (-not $currentConfig -and $global:CurrentConfig) {
-        $currentConfig = $global:CurrentConfig
+    $currentKey = switch ($ItemType) {
+        'configuration' { 'Config' }
+        'filter' { 'Filter' }
+        'portability' { 'PortRule' }
+        'flexapppackage' { 'FlexApp' }
     }
     
-    if (-not $currentConfig) {
-        throw "No configuration loaded for editing. Use Edit-ProUConfig first."
+    $currentItem = $script:ModuleConfig.CurrentItems[$currentKey]
+    
+    # Also check global variables for backward compatibility
+    if (-not $currentItem) {
+        $currentItem = switch ($ItemType) {
+            'configuration' { $global:CurrentConfig }
+            'filter' { $global:CurrentFilter }
+            'portability' { $global:CurrentPortRule }
+            'flexapppackage' { $global:CurrentFlexapp }
+        }
     }
     
-    $configName = $currentConfig.name
+    if (-not $currentItem) {
+        throw "No $ItemType loaded for editing. Use Edit-ProU$currentKey first."
+    }
     
-    if ($Force -or $PSCmdlet.ShouldProcess($configName, "Save configuration")) {
+    # Use standard PowerShell confirmation pattern
+    # -Force bypasses confirmation, or user can use -Confirm:$false
+    if ($Force -or $PSCmdlet.ShouldProcess("$ItemType on ProfileUnity server", "Save")) {
         try {
-            Write-Verbose "Saving configuration: $configName"
+            Write-Verbose "Saving $ItemType to ProfileUnity server..."
+            Write-Verbose "Item type: $ItemType"
+            Write-Verbose "Current item exists: $($null -ne $currentItem)"
             
-            # Prepare the configuration object
-            $configToSave = @{
-                configurations = $currentConfig
+            if ($ItemType -eq 'configuration' -and $currentItem.AdministrativeTemplates) {
+                Write-Verbose "Configuration contains $($currentItem.AdministrativeTemplates.Count) AdministrativeTemplates"
+                foreach ($template in $currentItem.AdministrativeTemplates) {
+                    Write-Verbose "  - $($template.DisplayName) (Sequence: $($template.Sequence))"
+                }
+                
+                # Clean AdministrativeTemplates to prevent JSON parsing errors
+                Write-Verbose "Cleaning AdministrativeTemplates to prevent JSON parsing errors..."
+                Write-Verbose "AdministrativeTemplates type before cleaning: $($currentItem.AdministrativeTemplates.GetType().Name)"
+                Write-Verbose "AdministrativeTemplates count before cleaning: $($currentItem.AdministrativeTemplates.Count)"
+                
+                # Clean specific problematic text fields in AdministrativeTemplates
+                Write-Verbose "Cleaning problematic text fields in AdministrativeTemplates..."
+                $cleanedCount = 0
+                
+                for ($i = 0; $i -lt $currentItem.AdministrativeTemplates.Count; $i++) {
+                    $template = $currentItem.AdministrativeTemplates[$i]
+                    
+                    # Clean template-level text fields
+                    if ($template.DisplayName -and $template.DisplayName -is [string]) {
+                        $template.DisplayName = Clean-AdmxText -Text $template.DisplayName
+                    }
+                    if ($template.Description -and $template.Description -is [string]) {
+                        $template.Description = Clean-AdmxText -Text $template.Description
+                    }
+                    
+                    # Directly clean all HelpText fields in the template
+                    if ($template.Categories) {
+                        foreach ($category in $template.Categories) {
+                            if ($category.Children) {
+                                foreach ($child in $category.Children) {
+                                    if ($child.Children) {
+                                        foreach ($grandchild in $child.Children) {
+                                            if ($grandchild.Settings) {
+                                                foreach ($setting in $grandchild.Settings) {
+                                                    # Clean HelpText - this is the main culprit
+                                                    if ($setting.HelpText -and $setting.HelpText -is [string]) {
+                                                        $originalLength = $setting.HelpText.Length
+                                                        $cleanedText = Clean-AdmxText -Text $setting.HelpText
+                                                        $setting.HelpText = $cleanedText
+                                                        $newLength = $setting.HelpText.Length
+                                                        if ($originalLength -ne $newLength) {
+                                                            $cleanedCount++
+                                                            Write-Verbose "Cleaned HelpText: $($setting.Name) - $originalLength -> $newLength chars"
+                                                        }
+                                                    }
+                                                    
+                                                    # Clean other text fields
+                                                    if ($setting.Name -and $setting.Name -is [string]) {
+                                                        $setting.Name = Clean-AdmxText -Text $setting.Name
+                                                    }
+                                                    if ($setting.Description -and $setting.Description -is [string]) {
+                                                        $setting.Description = Clean-AdmxText -Text $setting.Description
+                                                    }
+                                                    if ($setting.DisplayName -and $setting.DisplayName -is [string]) {
+                                                        $setting.DisplayName = Clean-AdmxText -Text $setting.DisplayName
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                Write-Verbose "Cleaned $cleanedCount HelpText fields"
+                
+                Write-Verbose "AdministrativeTemplates type after cleaning: $($currentItem.AdministrativeTemplates.GetType().Name)"
+                Write-Verbose "AdministrativeTemplates count after cleaning: $($currentItem.AdministrativeTemplates.Count)"
+                Write-Verbose "AdministrativeTemplates cleaned using targeted approach"
+                
+                # Log the full configuration being sent
+                Write-Verbose "Full configuration being sent to API:"
+                Write-Verbose ($currentItem | ConvertTo-Json -Depth 5)
             }
             
-            $response = Invoke-ProfileUnityApi -Endpoint "configuration" -Method POST -Body $configToSave
-            
-            if ($response) {
-                Write-Host "Configuration '$configName' saved successfully" -ForegroundColor Green
-                Write-LogMessage -Message "Configuration '$configName' saved by $env:USERNAME" -Level Info
-                
-                # Clear current config after successful save
-                $script:ModuleConfig.CurrentItems.Config = $null
-                $global:CurrentConfig = $null
-                
-                return $response
-            }
+            $response = Invoke-ProfileUnityApi -Endpoint $ItemType -Method POST -Body $currentItem
+            Write-Verbose "Save API response received"
+            Write-Verbose "Save API Response Type: $($response.GetType().Name)"
+            Write-Verbose "Save API Response Keys: $($response.PSObject.Properties.Name -join ', ')"
+            Write-Verbose "Full Save API Response: $($response | ConvertTo-Json -Depth 5)"
+            Write-Host "$ItemType saved successfully" -ForegroundColor Green
         }
         catch {
-            Write-Error "Failed to save configuration: $_"
+            Write-Error "Failed to save ${ItemType}: $_"
             throw
         }
     }
@@ -219,78 +460,144 @@ function New-ProUConfig {
         Creates a new configuration with basic settings.
     
     .PARAMETER Name
-        Name for the new configuration
+        Name of the new configuration
     
     .PARAMETER Description
-        Description of the configuration
+        Optional description
     
-    .PARAMETER CopyFrom
-        Name of existing configuration to copy from
+    .PARAMETER Template
+        Optional template to base the configuration on
     
     .EXAMPLE
-        New-ProUConfig -Name "Test Config" -Description "Testing configuration"
-        
-    .EXAMPLE
-        New-ProUConfig -Name "New Config" -CopyFrom "Template Config"
+        New-ProUConfig -Name "Test Configuration" -Description "Test config"
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
         [string]$Name,
         
-        [string]$Description = "Created by PowerTools",
+        [string]$Description = "",
         
-        [string]$CopyFrom
+        [string]$Template
     )
     
     try {
-        if ($CopyFrom) {
-            # Find source configuration
-            $sourceConfigs = Get-ProUConfig
-            $sourceConfig = $sourceConfigs | Where-Object { $_.Name -eq $CopyFrom }
-            
-            if (-not $sourceConfig) {
-                throw "Source configuration '$CopyFrom' not found"
-            }
-            
-            Write-Verbose "Copying from configuration: $CopyFrom"
-            
-            # Use the copy endpoint
-            $response = Invoke-ProfileUnityApi -Endpoint "configuration/$($sourceConfig.ID)/copy" -Method POST
-            
-            if ($response -and $response.tag) {
-                # Update the name and description
-                $newConfig = $response.tag
-                $newConfig.name = $Name
-                $newConfig.description = $Description
-                
-                # Save the updated configuration
-                $saveResponse = Invoke-ProfileUnityApi -Endpoint "configuration" -Method POST -Body @{
-                    configurations = $newConfig
+        # Check if configuration already exists
+        $existingConfigs = Get-ProUConfig
+        if ($existingConfigs | Where-Object { $_.Name -eq $Name }) {
+            throw "Configuration '$Name' already exists"
+        }
+        
+        Write-Verbose "Creating new configuration: $Name"
+        
+        # Create complete configuration object with all required fields
+        $newConfig = @{
+            Name = $Name
+            Description = $Description
+            Disabled = $false
+            Comments = ""
+            CompressionType = 0
+            EnableFilter = $false
+            EnableLogFilter = $false
+            LogLevel = 1
+            LogPath = ""
+            GroupName = ""
+            RequireGroupMembership = $false
+            OverrideDeploymentPath = ""
+            OverrideCloudCreds = ""
+            PortabilityRetention = 0
+            FlexAppDiaAndPortabilitySecondaryPaths = ""
+            EnableCloaking = $false
+            ApplicationPreservationMode = $false
+            EnableFlexAppSystrayUtility = $false
+            EnableCacheThrottle = $false
+            FlexappCacheThrottleFilterId = ""
+            FlexappCacheThrottleFilter = $null
+            FlexappCacheThrottleTarget = 0.0
+            Filter = $null
+            FilterId = ""
+            LogFilter = $null
+            LogFilterId = ""
+            # Initialize all module arrays
+            AdministrativeTemplates = @()
+            ApplicationLaunchers = @()
+            ApplicationRestrictions = @()
+            AppstreamApps = @()
+            FlexAppOnes = @()
+            AppVApps = @()
+            DesktopStartMenus = @()
+            DriveMappings = @()
+            EnvironmentVariables = @()
+            FileAssociations = @()
+            FlexAppDias = @()
+            FlexAppUias = @()
+            FolderRedirections = @()
+            IniFiles = @()
+            InternetExplorers = @()
+            InternetProxies = @()
+            Inventories = @()
+            MapiProfiles = @()
+            MessageBoxes = @()
+            MsixApps = @()
+            OfficeFileLocations = @()
+            OfficeOptions = @()
+            Outlooks = @()
+            Paths = @()
+            PortabilitySettings = @()
+            Printers = @()
+            PrinterInstalls = @()
+            PrivilegeElevations = @()
+            ProfileCleanups = @()
+            RdpClients = @()
+            Registries = @()
+            RegistryRedirections = @()
+            Shortcuts = @()
+            ThinApps = @()
+            TimeSyncs = @()
+            TriggerPoints = @()
+            UserDefinedAliases = @()
+            UserDefinedScripts = @()
+            VirtualDisks = @()
+            WindowsOptions = @()
+        }
+        
+        # If template specified, copy from template
+        if ($Template) {
+            $templateConfig = $existingConfigs | Where-Object { $_.Name -eq $Template }
+            if ($templateConfig) {
+                Write-Verbose "Using template: $Template"
+                # Get full template details
+                $templateResponse = Invoke-ProfileUnityApi -Endpoint "configuration/$($templateConfig.ID)"
+                if ($templateResponse.tag) {
+                    # Copy all module arrays from template
+                    $templateData = $templateResponse.tag
+                    foreach ($property in $templateData.PSObject.Properties) {
+                        if ($newConfig.ContainsKey($property.Name) -and $property.Name -notin @('Name', 'Description', 'ID', 'CreatedBy', 'DateCreated', 'DateLastModified', 'LastModifiedBy')) {
+                            $newConfig[$property.Name] = $property.Value
+                        }
+                    }
+                    Write-Verbose "Copied template structure from: $Template"
                 }
-                
-                Write-Host "Configuration '$Name' created successfully (copied from '$CopyFrom')" -ForegroundColor Green
-                return $saveResponse
+            }
+            else {
+                Write-Warning "Template '$Template' not found, creating empty configuration"
             }
         }
-        else {
-            # Create new empty configuration
-            $newConfig = @{
-                name = $Name
-                description = $Description
-                disabled = $false
-                modules = @()
-                AdministrativeTemplates = @()
-                FlexAppDias = @()
-                UserEnvironmentConfigs = @()
-            }
-            
-            $response = Invoke-ProfileUnityApi -Endpoint "configuration" -Method POST -Body @{
-                configurations = $newConfig
-            }
-            
+        
+        # Create the configuration - use direct object, not wrapped
+        $response = Invoke-ProfileUnityApi -Endpoint "configuration" -Method POST -Body $newConfig
+        
+        # Validate response
+        if ($response -and $response.type -eq "success") {
             Write-Host "Configuration '$Name' created successfully" -ForegroundColor Green
-            return $response
+            Write-Verbose "Configuration ID: $($response.tag.id)"
+            return $response.tag
+        }
+        elseif ($response -and $response.type -eq "error") {
+            throw "Server error: $($response.message)"
+        }
+        else {
+            throw "Unexpected response from server: $($response | ConvertTo-Json -Depth 2)"
         }
     }
     catch {
@@ -314,10 +621,7 @@ function Remove-ProUConfig {
         Skip confirmation prompt
     
     .EXAMPLE
-        Remove-ProUConfig -Name "Old Config"
-        
-    .EXAMPLE
-        Remove-ProUConfig -Name "Test Config" -Force
+        Remove-ProUConfig -Name "Old Configuration"
     #>
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
     param(
@@ -328,7 +632,6 @@ function Remove-ProUConfig {
     )
     
     try {
-        # Find configuration
         $configs = Get-ProUConfig
         $config = $configs | Where-Object { $_.Name -eq $Name }
         
@@ -337,21 +640,16 @@ function Remove-ProUConfig {
         }
         
         if ($Force -or $PSCmdlet.ShouldProcess($Name, "Remove configuration")) {
-            Write-Verbose "Deleting configuration ID: $($config.ID)"
-            
-            $response = Invoke-ProfileUnityApi -Endpoint "configuration/$($config.ID)?force=false" -Method DELETE
-            
-            Write-Host "Configuration '$Name' deleted successfully" -ForegroundColor Green
-            Write-LogMessage -Message "Configuration '$Name' deleted by $env:USERNAME" -Level Info
-            
+            $response = Invoke-ProfileUnityApi -Endpoint "configuration/$($config.ID)" -Method DELETE
+            Write-Host "Configuration '$Name' removed successfully" -ForegroundColor Green
             return $response
         }
         else {
-            Write-Host "Delete cancelled" -ForegroundColor Yellow
+            Write-Host "Remove cancelled" -ForegroundColor Yellow
         }
     }
     catch {
-        Write-Error "Failed to delete configuration: $_"
+        Write-Error "Failed to remove configuration: $_"
         throw
     }
 }
@@ -359,7 +657,7 @@ function Remove-ProUConfig {
 function Copy-ProUConfig {
     <#
     .SYNOPSIS
-        Creates a copy of a ProfileUnity configuration.
+        Copies an existing ProfileUnity configuration.
     
     .DESCRIPTION
         Copies an existing configuration with a new name.
@@ -415,7 +713,7 @@ function Copy-ProUConfig {
             
             # Save the updated configuration
             $saveResponse = Invoke-ProfileUnityApi -Endpoint "configuration" -Method POST -Body @{
-                configurations = $copiedConfig
+                configuration = $copiedConfig
             }
             
             Write-Host "Configuration copied successfully" -ForegroundColor Green
@@ -443,7 +741,7 @@ function Test-ProUConfig {
         Name of the configuration to test
     
     .EXAMPLE
-        Test-ProUConfig -Name "Production Config"
+        Test-ProUConfig -Name "Production Configuration"
     #>
     [CmdletBinding()]
     param(
@@ -452,77 +750,64 @@ function Test-ProUConfig {
     )
     
     try {
-        Write-Host "Testing configuration: $Name" -ForegroundColor Yellow
+        $configs = Get-ProUConfig
+        $config = $configs | Where-Object { $_.Name -eq $Name }
         
-        # Load the configuration
-        Edit-ProUConfig -Name $Name -Quiet
-        
-        $config = $script:ModuleConfig.CurrentItems.Config
         if (-not $config) {
-            throw "Failed to load configuration"
+            throw "Configuration '$Name' not found"
         }
+        
+        Write-Verbose "Testing configuration: $Name"
+        
+        # Get detailed configuration
+        $response = Invoke-ProfileUnityApi -Endpoint "configuration/$($config.ID)"
+        $configData = $response.tag
         
         $issues = @()
         $warnings = @()
         
-        # Check if configuration is disabled
-        if ($config.disabled) {
-            $warnings += "Configuration is disabled"
+        # Basic validation
+        if (-not $configData.name) {
+            $issues += "Missing configuration name"
         }
         
-        # Check for modules
-        if (-not $config.modules -or $config.modules.Count -eq 0) {
-            $warnings += "Configuration has no modules defined"
+        if (-not $configData.modules -or $configData.modules.Count -eq 0) {
+            $warnings += "Configuration has no modules"
         }
         
-        # Check for filters
-        $hasFilters = $false
-        if ($config.modules) {
-            foreach ($module in $config.modules) {
-                if ($module.FilterId -and $module.FilterId -ne [guid]::Empty) {
-                    $hasFilters = $true
-                    break
-                }
+        # Module validation
+        if ($configData.modules) {
+            $duplicateSequences = $configData.modules | Group-Object Sequence | Where-Object { $_.Count -gt 1 }
+            if ($duplicateSequences) {
+                $issues += "Duplicate module sequences found"
             }
         }
         
-        if (-not $hasFilters) {
-            $warnings += "No filters assigned to any modules"
-        }
+        $isValid = $issues.Count -eq 0
         
-        # Check for administrative templates
-        if ($config.AdministrativeTemplates -and $config.AdministrativeTemplates.Count -gt 0) {
-            Write-Host "  Administrative Templates: $($config.AdministrativeTemplates.Count)" -ForegroundColor Gray
+        $result = [PSCustomObject]@{
+            ConfigurationName = $Name
+            IsValid = $isValid
+            Issues = $issues
+            Warnings = $warnings
+            ModuleCount = if ($configData.modules) { $configData.modules.Count } else { 0 }
+            TestDate = Get-Date
         }
         
         # Display results
-        Write-Host "`nTest Results:" -ForegroundColor Cyan
-        
-        if ($issues.Count -eq 0 -and $warnings.Count -eq 0) {
-            Write-Host "  No issues found" -ForegroundColor Green
+        if ($isValid) {
+            Write-Host "Configuration '$Name' validation: PASSED" -ForegroundColor Green
         }
         else {
-            if ($issues.Count -gt 0) {
-                Write-Host "  Issues:" -ForegroundColor Red
-                $issues | ForEach-Object { Write-Host "    - $_" -ForegroundColor Red }
-            }
-            
-            if ($warnings.Count -gt 0) {
-                Write-Host "  Warnings:" -ForegroundColor Yellow
-                $warnings | ForEach-Object { Write-Host "    - $_" -ForegroundColor Yellow }
-            }
+            Write-Host "Configuration '$Name' validation: FAILED" -ForegroundColor Red
+            $issues | ForEach-Object { Write-Host "  ERROR: $_" -ForegroundColor Red }
         }
         
-        # Clear the loaded config
-        $script:ModuleConfig.CurrentItems.Config = $null
-        $global:CurrentConfig = $null
-        
-        return [PSCustomObject]@{
-            ConfigurationName = $Name
-            Issues = $issues
-            Warnings = $warnings
-            IsValid = $issues.Count -eq 0
+        if ($warnings.Count -gt 0) {
+            $warnings | ForEach-Object { Write-Host "  WARNING: $_" -ForegroundColor Yellow }
         }
+        
+        return $result
     }
     catch {
         Write-Error "Failed to test configuration: $_"
@@ -533,7 +818,7 @@ function Test-ProUConfig {
 function Get-ProUConfigModules {
     <#
     .SYNOPSIS
-        Gets available configuration modules.
+        Gets available module types for configurations.
     
     .DESCRIPTION
         Retrieves the list of available module types for configurations.
@@ -565,6 +850,7 @@ function Get-ProUConfigModules {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Get-ProUConfig',
     'Edit-ProUConfig',
@@ -575,3 +861,4 @@ Export-ModuleMember -Function @(
     'Test-ProUConfig',
     'Get-ProUConfigModules'
 )
+#>

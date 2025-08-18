@@ -1,21 +1,30 @@
-# Helpers.ps1 - Common Helper Functions
+# Core\Helpers.ps1 - Updated with Correct Assert Function
+# Relative Path: \Core\Helpers.ps1
+
+# =============================================================================
+# CORE HELPER FUNCTIONS - MATCHING WORKING MODULE
+# =============================================================================
+
+# Assert-ProfileUnityConnection moved to Core/Connection.ps1 to avoid duplication
+
+# Invoke-ProfileUnityApi moved to Core/Connection.ps1 to avoid duplication
 
 function Confirm-Action {
     <#
     .SYNOPSIS
-        Prompts user for confirmation before proceeding.
+        Prompts user for confirmation of an action.
     
     .DESCRIPTION
-        Shows a confirmation dialog for sensitive operations.
+        Shows a confirmation dialog with Yes/No choices.
     
     .PARAMETER Title
-        The title of the confirmation dialog
+        Title of the confirmation dialog
     
     .PARAMETER Message
-        The message to display
+        Message to display to the user
     
     .EXAMPLE
-        if (Confirm-Action -Title "Delete Configuration" -Message "Are you sure?") { }
+        Confirm-Action -Title "Delete Item" -Message "Are you sure?"
     #>
     [CmdletBinding()]
     param(
@@ -41,169 +50,35 @@ function Get-FileName {
         Opens a Windows file dialog for file selection.
     
     .PARAMETER Filter
-        File type filter
+        File filter string
     
     .PARAMETER InitialDirectory
-        Starting directory for the dialog
-    
-    .PARAMETER Title
-        Dialog window title
+        Initial directory to show
     
     .EXAMPLE
-        $file = Get-FileName -Filter "JSON files (*.json)|*.json"
+        Get-FileName -Filter "JSON files (*.json)|*.json"
     #>
     [CmdletBinding()]
     param(
-        [string]$Filter = "All files (*.*)|*.*",
-        [string]$InitialDirectory = [Environment]::GetFolderPath('MyDocuments'),
-        [string]$Title = "Select File"
-    )
-    
-    Add-Type -AssemblyName System.Windows.Forms
-    
-    $dialog = New-Object System.Windows.Forms.OpenFileDialog -Property @{
-        InitialDirectory = $InitialDirectory
-        Filter = $Filter
-        Title = $Title
-        RestoreDirectory = $true
-    }
-    
-    if ($dialog.ShowDialog() -eq 'OK') {
-        return $dialog.FileName
-    }
-    return $null
-}
-
-function Get-SaveFileName {
-    <#
-    .SYNOPSIS
-        Shows a file save dialog.
-    
-    .DESCRIPTION
-        Opens a Windows file dialog for saving files.
-    
-    .PARAMETER Filter
-        File type filter
-    
-    .PARAMETER InitialDirectory
-        Starting directory for the dialog
-    
-    .PARAMETER DefaultFileName
-        Default file name
-    
-    .PARAMETER Title
-        Dialog window title
-    
-    .EXAMPLE
-        $file = Get-SaveFileName -Filter "JSON files (*.json)|*.json" -DefaultFileName "config.json"
-    #>
-    [CmdletBinding()]
-    param(
-        [string]$Filter = "All files (*.*)|*.*",
-        [string]$InitialDirectory = [Environment]::GetFolderPath('MyDocuments'),
-        [string]$DefaultFileName = "",
-        [string]$Title = "Save File"
-    )
-    
-    Add-Type -AssemblyName System.Windows.Forms
-    
-    $dialog = New-Object System.Windows.Forms.SaveFileDialog -Property @{
-        InitialDirectory = $InitialDirectory
-        Filter = $Filter
-        FileName = $DefaultFileName
-        Title = $Title
-        RestoreDirectory = $true
-        OverwritePrompt = $true
-    }
-    
-    if ($dialog.ShowDialog() -eq 'OK') {
-        return $dialog.FileName
-    }
-    return $null
-}
-
-function Get-FolderPath {
-    <#
-    .SYNOPSIS
-        Shows a folder selection dialog.
-    
-    .DESCRIPTION
-        Opens a Windows folder browser dialog.
-    
-    .PARAMETER Description
-        Description shown in the dialog
-    
-    .PARAMETER InitialDirectory
-        Starting directory
-    
-    .EXAMPLE
-        $folder = Get-FolderPath -Description "Select export folder"
-    #>
-    [CmdletBinding()]
-    param(
-        [string]$Description = "Select Folder",
+        [string]$Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
         [string]$InitialDirectory = [Environment]::GetFolderPath('MyDocuments')
     )
     
-    Add-Type -AssemblyName System.Windows.Forms
-    
-    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog -Property @{
-        Description = $Description
-        SelectedPath = $InitialDirectory
-        ShowNewFolderButton = $true
-    }
-    
-    if ($dialog.ShowDialog() -eq 'OK') {
-        return $dialog.SelectedPath
-    }
-    return $null
-}
-
-function Write-LogMessage {
-    <#
-    .SYNOPSIS
-        Writes a message to the module log file.
-    
-    .DESCRIPTION
-        Logs messages with timestamp and level.
-    
-    .PARAMETER Message
-        The message to log
-    
-    .PARAMETER Level
-        Log level (Info, Warning, Error)
-    
-    .EXAMPLE
-        Write-LogMessage -Message "Operation completed" -Level Info
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$Message,
+    try {
+        Add-Type -AssemblyName System.Windows.Forms
+        $dialog = New-Object System.Windows.Forms.OpenFileDialog -Property @{
+            InitialDirectory = $InitialDirectory
+            Filter = $Filter
+        }
         
-        [ValidateSet('Info', 'Warning', 'Error', 'Debug')]
-        [string]$Level = 'Info'
-    )
-    
-    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $logEntry = "[$timestamp] [$Level] $Message"
-    
-    # Write to log file if available
-    if ($script:LogFile) {
-        try {
-            Add-Content -Path $script:LogFile -Value $logEntry -ErrorAction Stop
+        if ($dialog.ShowDialog() -eq 'OK') {
+            return $dialog.FileName
         }
-        catch {
-            Write-Warning "Could not write to log file: $_"
-        }
+        return $null
     }
-    
-    # Also write to verbose/warning/error stream based on level
-    switch ($Level) {
-        'Info' { Write-Verbose $Message }
-        'Warning' { Write-Warning $Message }
-        'Error' { Write-Error $Message }
-        'Debug' { Write-Debug $Message }
+    catch {
+        Write-Warning "File dialog not available: $_"
+        return $null
     }
 }
 
@@ -213,228 +88,342 @@ function ConvertTo-SafeFileName {
         Converts a string to a safe filename.
     
     .DESCRIPTION
-        Removes invalid characters from a filename.
+        Removes or replaces invalid characters from a string to create a valid filename.
     
     .PARAMETER FileName
-        The filename to clean
+        The original filename string
+    
+    .PARAMETER Replacement
+        Character to use as replacement for invalid characters (default: '_')
     
     .EXAMPLE
-        $safe = ConvertTo-SafeFileName -FileName "Config:Test/Invalid"
+        ConvertTo-SafeFileName -FileName "My Config: Test/Data"
+        # Returns: "My Config_ Test_Data"
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [string]$FileName
+        [string]$FileName,
+        
+        [string]$Replacement = '_'
     )
     
+    # Get invalid characters for filenames
     $invalidChars = [System.IO.Path]::GetInvalidFileNameChars()
-    $pattern = '[' + [Regex]::Escape($invalidChars -join '') + ']'
     
-    return $FileName -replace $pattern, '_'
+    # Replace invalid characters
+    $safeName = $FileName
+    foreach ($char in $invalidChars) {
+        $safeName = $safeName.Replace($char, $Replacement)
+    }
+    
+    # Remove multiple consecutive replacement characters
+    while ($safeName.Contains($Replacement + $Replacement)) {
+        $safeName = $safeName.Replace($Replacement + $Replacement, $Replacement)
+    }
+    
+    # Trim replacement characters from start/end
+    $safeName = $safeName.Trim($Replacement)
+    
+    # Ensure the filename isn't empty
+    if ([string]::IsNullOrWhiteSpace($safeName)) {
+        $safeName = "unnamed"
+    }
+    
+    # Truncate if too long (Windows max filename is 255 chars)
+    if ($safeName.Length -gt 200) {
+        $safeName = $safeName.Substring(0, 200).TrimEnd($Replacement)
+    }
+    
+    return $safeName
 }
 
-function Test-JsonContent {
+function Write-LogMessage {
     <#
     .SYNOPSIS
-        Tests if a string is valid JSON.
+        Writes a message to the module log file.
     
     .DESCRIPTION
-        Validates JSON content and optionally returns the parsed object.
+        Centralized logging function for the ProfileUnity PowerTools module.
     
-    .PARAMETER Json
-        The JSON string to test
+    .PARAMETER Message
+        The message to log
     
-    .PARAMETER ReturnObject
-        If specified, returns the parsed object
+    .PARAMETER Level
+        Log level (Info, Warning, Error)
+    
+    .PARAMETER Category
+        Optional category for the log entry
     
     .EXAMPLE
-        if (Test-JsonContent -Json $jsonString) { }
+        Write-LogMessage -Message "Configuration saved" -Level Info
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [string]$Json,
+        [string]$Message,
         
-        [switch]$ReturnObject
+        [ValidateSet('Info', 'Warning', 'Error', 'Debug')]
+        [string]$Level = 'Info',
+        
+        [string]$Category = 'General'
     )
     
     try {
-        $obj = $Json | ConvertFrom-Json -ErrorAction Stop
+        # Create log entry
+        $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $logEntry = "$timestamp [$Level] [$Category] $Message"
         
-        if ($ReturnObject) {
-            return $obj
+        # Write to verbose stream
+        Write-Verbose $logEntry
+        
+        # Optionally write to file if path exists
+        $logDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'ProfileUnity-PowerTools\Logs'
+        if (Test-Path $logDir) {
+            $logFile = Join-Path $logDir "ProfileUnity-PowerTools_$(Get-Date -Format 'yyyyMMdd').log"
+            Add-Content -Path $logFile -Value $logEntry -Encoding UTF8 -ErrorAction SilentlyContinue
         }
-        return $true
     }
     catch {
-        if ($ReturnObject) {
-            return $null
-        }
-        return $false
+        # Ignore logging errors
     }
 }
 
-function Format-ProfileUnityObject {
+function Format-ProfileUnityData {
     <#
     .SYNOPSIS
-        Formats ProfileUnity objects for display.
+        Formats ProfileUnity data for display.
     
     .DESCRIPTION
-        Creates a formatted view of common ProfileUnity objects.
+        Standardizes the display format for ProfileUnity objects.
     
-    .PARAMETER Object
-        The object to format
+    .PARAMETER Data
+        The data to format
     
     .PARAMETER Type
-        The type of object
+        The type of data being formatted
     
     .EXAMPLE
-        Format-ProfileUnityObject -Object $config -Type Configuration
+        Format-ProfileUnityData -Data $configurations -Type "Configuration"
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$Data,
+        
+        [ValidateSet('Configuration', 'Filter', 'FlexApp', 'User', 'Computer')]
+        [string]$Type
+    )
+    
+    try {
+        switch ($Type) {
+            'Configuration' {
+                $Data | Select-Object @(
+                    @{Name='Name'; Expression={$_.Name}},
+                    @{Name='ID'; Expression={$_.ID}},
+                    @{Name='Enabled'; Expression={-not $_.Disabled}},
+                    @{Name='Modules'; Expression={if ($_.modules) {$_.modules.Count} else {0}}},
+                    @{Name='Description'; Expression={$_.Description}}
+                )
+            }
+            
+            'Filter' {
+                $Data | Select-Object @(
+                    @{Name='Name'; Expression={$_.name}},
+                    @{Name='ID'; Expression={$_.id}},
+                    @{Name='Type'; Expression={$_.filterType}},
+                    @{Name='Rules'; Expression={if ($_.rules) {$_.rules.Count} else {0}}}
+                )
+            }
+            
+            default {
+                return $Data
+            }
+        }
+    }
+    catch {
+        Write-Warning "Failed to format data: $_"
+        return $Data
+    }
+}
+
+function Convert-ProfileUnityGuid {
+    <#
+    .SYNOPSIS
+        Converts between different GUID formats used by ProfileUnity.
+    
+    .DESCRIPTION
+        Handles GUID format conversions for ProfileUnity API compatibility.
+    
+    .PARAMETER Guid
+        The GUID to convert
+    
+    .PARAMETER Format
+        The target format
+    
+    .EXAMPLE
+        Convert-ProfileUnityGuid -Guid "12345678-1234-1234-1234-123456789012" -Format Bracketed
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Guid,
+        
+        [ValidateSet('Plain', 'Bracketed', 'Upper', 'Lower')]
+        [string]$Format = 'Plain'
+    )
+    
+    try {
+        # Parse GUID to ensure it's valid
+        $guidObj = [System.Guid]::Parse($Guid)
+        
+        switch ($Format) {
+            'Plain' { return $guidObj.ToString() }
+            'Bracketed' { return "{$($guidObj.ToString())}" }
+            'Upper' { return $guidObj.ToString().ToUpper() }
+            'Lower' { return $guidObj.ToString().ToLower() }
+        }
+    }
+    catch {
+        Write-Warning "Invalid GUID format: $Guid"
+        return $Guid
+    }
+}
+
+function Get-ProfileUnityErrorDetails {
+    <#
+    .SYNOPSIS
+        Extracts detailed error information from ProfileUnity API responses.
+    
+    .DESCRIPTION
+        Parses error responses to provide meaningful error messages.
+    
+    .PARAMETER ErrorRecord
+        The error record to parse
+    
+    .EXAMPLE
+        Get-ProfileUnityErrorDetails -ErrorRecord $_
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.ErrorRecord]$ErrorRecord
+    )
+    
+    try {
+        $errorDetails = @{
+            Message = $ErrorRecord.Exception.Message
+            Category = $ErrorRecord.CategoryInfo.Category
+            TargetName = $ErrorRecord.CategoryInfo.TargetName
+        }
+        
+        # Try to extract API error details
+        if ($ErrorRecord.Exception -is [System.Net.WebException]) {
+            $response = $ErrorRecord.Exception.Response
+            if ($response) {
+                $errorDetails.StatusCode = $response.StatusCode
+                $errorDetails.StatusDescription = $response.StatusDescription
+                
+                # Try to read response content
+                try {
+                    $stream = $response.GetResponseStream()
+                    $reader = New-Object System.IO.StreamReader($stream)
+                    $content = $reader.ReadToEnd()
+                    
+                    if ($content) {
+                        $apiError = $content | ConvertFrom-Json -ErrorAction SilentlyContinue
+                        if ($apiError) {
+                            $errorDetails.ApiError = $apiError
+                        }
+                    }
+                }
+                catch {
+                    # Ignore errors reading response content
+                }
+            }
+        }
+        
+        return $errorDetails
+    }
+    catch {
+        return @{
+            Message = "Failed to parse error details"
+            Category = "Unknown"
+        }
+    }
+}
+
+function Validate-ProfileUnityObject {
+    <#
+    .SYNOPSIS
+        Validates ProfileUnity object structure.
+    
+    .DESCRIPTION
+        Checks if an object has the required properties for ProfileUnity operations.
+    
+    .PARAMETER Object
+        The object to validate
+    
+    .PARAMETER Type
+        The expected object type
+    
+    .PARAMETER RequiredProperties
+        Array of required property names
+    
+    .EXAMPLE
+        Validate-ProfileUnityObject -Object $config -Type "Configuration" -RequiredProperties @('name', 'id')
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
         [object]$Object,
         
-        [ValidateSet('Configuration', 'Filter', 'Portability', 'FlexApp')]
-        [string]$Type
-    )
-    
-    switch ($Type) {
-        'Configuration' {
-            return [PSCustomObject]@{
-                Name = $Object.name
-                ID = $Object.id
-                Description = $Object.description
-                Enabled = -not $Object.disabled
-                ModuleCount = if ($Object.modules) { $Object.modules.Count } else { 0 }
-                LastModified = $Object.lastModified
-            }
-        }
-        'Filter' {
-            return [PSCustomObject]@{
-                Name = $Object.name
-                ID = $Object.id
-                Type = $Object.filterType
-                Enabled = -not $Object.disabled
-                Priority = $Object.priority
-            }
-        }
-        'Portability' {
-            return [PSCustomObject]@{
-                Name = $Object.name
-                ID = $Object.id
-                Type = $Object.portabilityType
-                Enabled = -not $Object.disabled
-                Path = $Object.path
-            }
-        }
-        'FlexApp' {
-            return [PSCustomObject]@{
-                Name = $Object.name
-                ID = $Object.id
-                Version = $Object.version
-                Enabled = -not $Object.disabled
-                Size = $Object.size
-                Created = $Object.created
-            }
-        }
-    }
-}
-
-function Get-ProfileUnityItemByName {
-    <#
-    .SYNOPSIS
-        Gets a ProfileUnity item by exact name match.
-    
-    .DESCRIPTION
-        Helper function to find items by exact name.
-    
-    .PARAMETER Items
-        Collection of items to search
-    
-    .PARAMETER Name
-        Name to find
-    
-    .PARAMETER Partial
-        Allow partial name matching
-    
-    .EXAMPLE
-        $config = Get-ProfileUnityItemByName -Items $configs -Name "Test Config"
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [array]$Items,
+        [string]$Type = "Unknown",
         
-        [Parameter(Mandatory)]
-        [string]$Name,
-        
-        [switch]$Partial
+        [string[]]$RequiredProperties = @()
     )
-    
-    if ($Partial) {
-        return $Items | Where-Object { $_.name -like "*$Name*" }
-    }
-    else {
-        return $Items | Where-Object { $_.name -eq $Name }
-    }
-}
-
-function Measure-ProfileUnityOperation {
-    <#
-    .SYNOPSIS
-        Measures the time taken for an operation.
-    
-    .DESCRIPTION
-        Executes a script block and measures execution time.
-    
-    .PARAMETER Operation
-        The script block to execute
-    
-    .PARAMETER Name
-        Name of the operation for logging
-    
-    .EXAMPLE
-        Measure-ProfileUnityOperation -Name "Export" -Operation { }
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [scriptblock]$Operation,
-        
-        [string]$Name = "Operation"
-    )
-    
-    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     
     try {
-        Write-Verbose "Starting $Name..."
-        $result = & $Operation
-        $stopwatch.Stop()
+        if (-not $Object) {
+            throw "Object is null"
+        }
         
-        Write-Verbose "$Name completed in $($stopwatch.Elapsed.TotalSeconds) seconds"
-        Write-LogMessage -Message "$Name completed in $($stopwatch.Elapsed.TotalSeconds) seconds" -Level Info
+        $missingProperties = @()
         
-        return $result
+        foreach ($property in $RequiredProperties) {
+            if (-not ($Object.PSObject.Properties.Name -contains $property)) {
+                $missingProperties += $property
+            }
+        }
+        
+        if ($missingProperties.Count -gt 0) {
+            throw "$Type object is missing required properties: $($missingProperties -join ', ')"
+        }
+        
+        return $true
     }
     catch {
-        $stopwatch.Stop()
-        Write-LogMessage -Message "$Name failed after $($stopwatch.Elapsed.TotalSeconds) seconds: $_" -Level Error
-        throw
+        Write-Error "Validation failed for $Type object: $_"
+        return $false
     }
 }
 
-# Export functions
-Export-ModuleMember -Function @(
-    'Confirm-Action',
-    'Get-FileName',
-    'Get-SaveFileName',
-    'Get-FolderPath',
-    'Write-LogMessage',
-    'ConvertTo-SafeFileName',
-    'Test-JsonContent',
-    'Format-ProfileUnityObject',
-    'Get-ProfileUnityItemByName',
-    'Measure-ProfileUnityOperation'
-)
+function New-ProfileUnityGuid {
+    <#
+    .SYNOPSIS
+        Generates a new GUID for ProfileUnity objects.
+    
+    .DESCRIPTION
+        Creates a new GUID in the format expected by ProfileUnity.
+    
+    .EXAMPLE
+        New-ProfileUnityGuid
+    #>
+    [CmdletBinding()]
+    param()
+    
+    return [System.Guid]::NewGuid().ToString()
+}
+
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
+# Export-ModuleMember removed to prevent conflicts when dot-sourcing

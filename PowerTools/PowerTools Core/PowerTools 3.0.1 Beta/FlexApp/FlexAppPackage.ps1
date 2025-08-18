@@ -1,4 +1,6 @@
 # FlexAppPackage.ps1 - ProfileUnity FlexApp Package Management Functions
+# Location: \FlexApp\FlexAppPackage.ps1
+# Compatible with: ProfileUnity PowerTools v3.0 / PowerShell 5.1+
 
 function Get-ProUFlexapps {
     <#
@@ -6,31 +8,20 @@ function Get-ProUFlexapps {
         Gets ProfileUnity FlexApp packages.
     
     .DESCRIPTION
-        Retrieves all FlexApp packages or filters by name.
+        Retrieves all FlexApp packages or packages by name.
     
     .PARAMETER Name
         Optional name filter (supports wildcards)
-    
-    .PARAMETER Enabled
-        Filter by enabled/disabled status
-    
-    .PARAMETER Type
-        Filter by package type (VHD, VMDK)
     
     .EXAMPLE
         Get-ProUFlexapps
         
     .EXAMPLE
-        Get-ProUFlexapps -Name "*Office*" -Enabled $true
+        Get-ProUFlexapps -Name "*Chrome*"
     #>
     [CmdletBinding()]
     param(
-        [string]$Name,
-        
-        [bool]$Enabled,
-        
-        [ValidateSet('VHD', 'VMDK')]
-        [string]$Type
+        [string]$Name
     )
     
     try {
@@ -44,36 +35,22 @@ function Get-ProUFlexapps {
         
         $packages = $response.Tag.Rows
         
-        # Apply filters
+        # Filter by name if specified
         if ($Name) {
             $packages = $packages | Where-Object { $_.name -like $Name }
         }
         
-        if ($PSBoundParameters.ContainsKey('Enabled')) {
-            $packages = $packages | Where-Object { -not $_.disabled -eq $Enabled }
-        }
-        
-        if ($Type) {
-            $packages = $packages | Where-Object { $_.packageType -eq $Type }
-        }
-        
-        # Format output
-        $packages | ForEach-Object {
+        return $packages | ForEach-Object {
             [PSCustomObject]@{
                 Name = $_.name
                 ID = $_.id
-                UUID = $_.uuid
                 Version = $_.version
-                Enabled = -not $_.disabled
-                Type = $_.packageType
-                Size = $_.size
-                SizeMB = [math]::Round($_.size / 1MB, 2)
-                Created = $_.created
-                Modified = $_.modified
-                ModifiedBy = $_.modifiedBy
-                Path = $_.path
-                CloudPath = $_.cloudPath
                 Description = $_.description
+                Enabled = -not $_.disabled
+                Size = $_.size
+                Created = $_.created
+                LastModified = $_.lastModified
+                ModifiedBy = $_.modifiedBy
             }
         }
     }
@@ -98,7 +75,7 @@ function Edit-ProUFlexapp {
         Suppress confirmation messages
     
     .EXAMPLE
-        Edit-ProUFlexapp -Name "Microsoft Office 2019"
+        Edit-ProUFlexapp -Name "Google Chrome"
     #>
     [CmdletBinding()]
     param(
@@ -128,7 +105,13 @@ function Edit-ProUFlexapp {
         
         $packageData = $response.tag
         
-        # Store in module config
+        # Store in module config with null checking
+        if (-not $script:ModuleConfig) {
+            $script:ModuleConfig = @{ CurrentItems = @{} }
+        }
+        if (-not $script:ModuleConfig.CurrentItems) {
+            $script:ModuleConfig.CurrentItems = @{}
+        }
         $script:ModuleConfig.CurrentItems.FlexApp = $packageData
         
         # Also set global variable for backward compatibility
@@ -136,18 +119,14 @@ function Edit-ProUFlexapp {
         
         if (-not $Quiet) {
             Write-Host "FlexApp package '$Name' loaded for editing" -ForegroundColor Green
-            Write-Host "Version: $($packageData.Version)" -ForegroundColor Cyan
-            Write-Host "Type: $($packageData.Type)" -ForegroundColor Cyan
-            Write-Host "Size: $([math]::Round($packageData.Size / 1MB, 2)) MB" -ForegroundColor Cyan
+            Write-Host "Version: $($packageData.version)" -ForegroundColor Cyan
+            Write-Host "Size: $($packageData.size)" -ForegroundColor Cyan
             
-            # Show history if available
-            if ($packageData.History) {
-                $historyLines = $packageData.History -split "`n"
-                Write-Host "History entries: $($historyLines.Count)" -ForegroundColor Cyan
+            # Show package summary if available
+            if ($packageData.applications) {
+                Write-Host "Applications: $($packageData.applications.Count)" -ForegroundColor Gray
             }
         }
-        
-        return $packageData
     }
     catch {
         Write-Error "Failed to edit FlexApp package: $_"
@@ -172,52 +151,78 @@ function Save-ProUFlexapp {
     .EXAMPLE
         Save-ProUFlexapp -Force
     #>
-    [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
+    [CmdletBinding(SupportsShouldProcess)]
+    param([switch]$Force) 
+    
+    if ($Force) {
+        Save-ProfileUnityItem -ItemType 'flexapppackage' -Force -Confirm:$false
+    } else {
+        Save-ProfileUnityItem -ItemType 'flexapppackage'
+    }
+}
+
+function New-ProUFlexapp {
+    <#
+    .SYNOPSIS
+        Creates a new ProfileUnity FlexApp package.
+    
+    .DESCRIPTION
+        Creates a new FlexApp package with basic settings.
+    
+    .PARAMETER Name
+        Name of the new FlexApp package
+    
+    .PARAMETER Version
+        Version of the FlexApp package
+    
+    .PARAMETER Description
+        Optional description
+    
+    .EXAMPLE
+        New-ProUFlexapp -Name "Google Chrome" -Version "1.0" -Description "Chrome browser package"
+    #>
+    [CmdletBinding()]
     param(
-        [switch]$Force
+        [Parameter(Mandatory)]
+        [string]$Name,
+        
+        [Parameter(Mandatory)]
+        [string]$Version,
+        
+        [string]$Description = ""
     )
     
-    # Get current FlexApp package
-    $currentPackage = $script:ModuleConfig.CurrentItems.FlexApp
-    if (-not $currentPackage -and $global:CurrentFlexapp) {
-        $currentPackage = $global:CurrentFlexapp
-    }
-    
-    if (-not $currentPackage) {
-        throw "No FlexApp package loaded for editing. Use Edit-ProUFlexapp first."
-    }
-    
-    $packageName = $currentPackage.name
-    
-    if ($Force -or $PSCmdlet.ShouldProcess($packageName, "Save FlexApp package")) {
-        try {
-            Write-Verbose "Saving FlexApp package: $packageName"
-            
-            # Prepare the package object
-            $packageToSave = @{
-                flexapppackages = $currentPackage
-            }
-            
-            $response = Invoke-ProfileUnityApi -Endpoint "flexapppackage" -Method POST -Body $packageToSave
-            
-            if ($response) {
-                Write-Host "FlexApp package '$packageName' saved successfully" -ForegroundColor Green
-                Write-LogMessage -Message "FlexApp package '$packageName' saved by $env:USERNAME" -Level Info
-                
-                # Clear current package after successful save
-                $script:ModuleConfig.CurrentItems.FlexApp = $null
-                $global:CurrentFlexapp = $null
-                
-                return $response
-            }
+    try {
+        # Check if package already exists
+        $existingPackages = Get-ProUFlexapps
+        if ($existingPackages | Where-Object { $_.Name -eq $Name }) {
+            throw "FlexApp package '$Name' already exists"
         }
-        catch {
-            Write-Error "Failed to save FlexApp package: $_"
-            throw
+        
+        Write-Verbose "Creating new FlexApp package: $Name"
+        
+        # Create basic package object
+        $newPackage = @{
+            name = $Name
+            description = $Description
+            version = $Version
+            disabled = $false
+            applications = @()
+        }
+        
+        # Create the package
+        $response = Invoke-ProfileUnityApi -Endpoint "flexapppackage" -Method POST -Body @{
+            flexapppackage = $newPackage
+        }
+        
+        if ($response) {
+            Write-Host "FlexApp package '$Name' created successfully" -ForegroundColor Green
+            return $response
         }
     }
-    else {
-        Write-Host "Save cancelled" -ForegroundColor Yellow
+    catch {
+        Write-Error "Failed to create FlexApp package: $_"
+        throw
     }
 }
 
@@ -236,7 +241,7 @@ function Remove-ProUFlexapp {
         Skip confirmation prompt
     
     .EXAMPLE
-        Remove-ProUFlexapp -Name "Old Application"
+        Remove-ProUFlexapp -Name "Old Package"
     #>
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
     param(
@@ -247,7 +252,6 @@ function Remove-ProUFlexapp {
     )
     
     try {
-        # Find FlexApp package
         $packages = Get-ProUFlexapps
         $package = $packages | Where-Object { $_.Name -eq $Name }
         
@@ -256,337 +260,111 @@ function Remove-ProUFlexapp {
         }
         
         if ($Force -or $PSCmdlet.ShouldProcess($Name, "Remove FlexApp package")) {
-            Write-Verbose "Deleting FlexApp package ID: $($package.ID)"
-            
-            $response = Invoke-ProfileUnityApi -Endpoint "flexapppackage/remove" -Method DELETE -Body @{
-                ids = @($package.ID)
-            }
-            
-            Write-Host "FlexApp package '$Name' deleted successfully" -ForegroundColor Green
-            Write-LogMessage -Message "FlexApp package '$Name' deleted by $env:USERNAME" -Level Info
-            
+            $response = Invoke-ProfileUnityApi -Endpoint "flexapppackage/$($package.ID)" -Method DELETE
+            Write-Host "FlexApp package '$Name' removed successfully" -ForegroundColor Green
             return $response
         }
         else {
-            Write-Host "Delete cancelled" -ForegroundColor Yellow
+            Write-Host "Remove cancelled" -ForegroundColor Yellow
         }
     }
     catch {
-        Write-Error "Failed to delete FlexApp package: $_"
+        Write-Error "Failed to remove FlexApp package: $_"
         throw
     }
 }
 
-function Enable-ProUFlexapp {
+function Copy-ProUFlexapp {
     <#
     .SYNOPSIS
-        Enables a ProfileUnity FlexApp package.
+        Copies an existing ProfileUnity FlexApp package.
     
     .DESCRIPTION
-        Enables a disabled FlexApp package.
+        Copies an existing FlexApp package with a new name.
     
-    .PARAMETER Name
-        Name of the FlexApp package to enable
+    .PARAMETER SourceName
+        Name of the FlexApp package to copy
+    
+    .PARAMETER NewName
+        Name for the new FlexApp package
+    
+    .PARAMETER Description
+        Optional new description
     
     .EXAMPLE
-        Enable-ProUFlexapp -Name "Microsoft Office"
+        Copy-ProUFlexapp -SourceName "Chrome v1.0" -NewName "Chrome v1.1"
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [string]$Name
+        [string]$SourceName,
+        
+        [Parameter(Mandatory)]
+        [string]$NewName,
+        
+        [string]$Description
     )
     
     try {
-        # Find FlexApp package
+        # Find source package
         $packages = Get-ProUFlexapps
-        $package = $packages | Where-Object { $_.Name -eq $Name }
+        $sourcePackage = $packages | Where-Object { $_.Name -eq $SourceName }
         
-        if (-not $package) {
-            throw "FlexApp package '$Name' not found"
+        if (-not $sourcePackage) {
+            throw "Source FlexApp package '$SourceName' not found"
         }
         
-        if ($package.Enabled) {
-            Write-Host "FlexApp package '$Name' is already enabled" -ForegroundColor Yellow
-            return
-        }
+        Write-Verbose "Copying FlexApp package ID: $($sourcePackage.ID)"
         
-        Write-Verbose "Enabling FlexApp package ID: $($package.ID)"
+        # Get full package details
+        $response = Invoke-ProfileUnityApi -Endpoint "flexapppackage/$($sourcePackage.ID)"
         
-        $response = Invoke-ProfileUnityApi -Endpoint "flexapppackage/$($package.ID)/enable" -Method POST
-        
-        Write-Host "FlexApp package '$Name' enabled successfully" -ForegroundColor Green
-        return $response
-    }
-    catch {
-        Write-Error "Failed to enable FlexApp package: $_"
-        throw
-    }
-}
-
-function Disable-ProUFlexapp {
-    <#
-    .SYNOPSIS
-        Disables a ProfileUnity FlexApp package.
-    
-    .DESCRIPTION
-        Disables an enabled FlexApp package.
-    
-    .PARAMETER Name
-        Name of the FlexApp package to disable
-    
-    .EXAMPLE
-        Disable-ProUFlexapp -Name "Microsoft Office"
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$Name
-    )
-    
-    try {
-        # Find FlexApp package
-        $packages = Get-ProUFlexapps
-        $package = $packages | Where-Object { $_.Name -eq $Name }
-        
-        if (-not $package) {
-            throw "FlexApp package '$Name' not found"
-        }
-        
-        if (-not $package.Enabled) {
-            Write-Host "FlexApp package '$Name' is already disabled" -ForegroundColor Yellow
-            return
-        }
-        
-        Write-Verbose "Disabling FlexApp package ID: $($package.ID)"
-        
-        $response = Invoke-ProfileUnityApi -Endpoint "flexapppackage/$($package.ID)/disable" -Method POST
-        
-        Write-Host "FlexApp package '$Name' disabled successfully" -ForegroundColor Green
-        return $response
-    }
-    catch {
-        Write-Error "Failed to disable FlexApp package: $_"
-        throw
-    }
-}
-
-function Add-ProUFlexappNote {
-    <#
-    .SYNOPSIS
-        Adds a note to the currently edited FlexApp package history.
-    
-    .DESCRIPTION
-        Adds a timestamped note to the FlexApp package history.
-    
-    .PARAMETER Note
-        The note text to add
-    
-    .EXAMPLE
-        Add-ProUFlexappNote -Note "Updated application to version 2.0"
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$Note
-    )
-    
-    # Get current FlexApp package
-    $currentPackage = $script:ModuleConfig.CurrentItems.FlexApp
-    if (-not $currentPackage -and $global:CurrentFlexapp) {
-        $currentPackage = $global:CurrentFlexapp
-    }
-    
-    if (-not $currentPackage) {
-        throw "No FlexApp package loaded for editing. Use Edit-ProUFlexapp first."
-    }
-    
-    try {
-        # Initialize history if needed
-        if (-not $currentPackage.History) {
-            $currentPackage | Add-Member -NotePropertyName History -NotePropertyValue "" -Force
-        }
-        
-        # Create timestamped note
-        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        $noteEntry = "[$timestamp] Note: $Note"
-        
-        # Add to history (prepend for newest first)
-        if ($currentPackage.History) {
-            $currentPackage.History = "$noteEntry`n$($currentPackage.History)"
-        }
-        else {
-            $currentPackage.History = $noteEntry
-        }
-        
-        # Update both storage locations
-        $script:ModuleConfig.CurrentItems.FlexApp = $currentPackage
-        $global:CurrentFlexapp = $currentPackage
-        
-        Write-Host "Note added to FlexApp package history" -ForegroundColor Green
-        Write-Host "Use Save-ProUFlexapp to save changes" -ForegroundColor Yellow
-    }
-    catch {
-        Write-Error "Failed to add note: $_"
-        throw
-    }
-}
-
-function Get-ProUFlexappWorkingState {
-    <#
-    .SYNOPSIS
-        Gets the working state of a FlexApp package.
-    
-    .DESCRIPTION
-        Retrieves the current working state and deployment status.
-    
-    .PARAMETER Name
-        Name of the FlexApp package
-    
-    .EXAMPLE
-        Get-ProUFlexappWorkingState -Name "Microsoft Office"
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$Name
-    )
-    
-    try {
-        # Find FlexApp package
-        $packages = Get-ProUFlexapps
-        $package = $packages | Where-Object { $_.Name -eq $Name }
-        
-        if (-not $package) {
-            throw "FlexApp package '$Name' not found"
-        }
-        
-        $response = Invoke-ProfileUnityApi -Endpoint "flexapppackage/$($package.ID)/workingstate"
-        
-        if ($response) {
-            return [PSCustomObject]@{
-                PackageName = $Name
-                State = $response.state
-                LastUpdated = $response.lastUpdated
-                DeploymentStatus = $response.deploymentStatus
-                ActiveSessions = $response.activeSessions
-            }
-        }
-    }
-    catch {
-        Write-Error "Failed to get FlexApp working state: $_"
-        throw
-    }
-}
-
-function Get-ProUFlexappReport {
-    <#
-    .SYNOPSIS
-        Gets a report of FlexApp packages.
-    
-    .DESCRIPTION
-        Generates a report of VHD or VMDK FlexApp packages.
-    
-    .PARAMETER Type
-        Type of packages to report on
-    
-    .EXAMPLE
-        Get-ProUFlexappReport -Type VHD
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [ValidateSet('VHD', 'VMDK')]
-        [string]$Type
-    )
-    
-    try {
-        $endpoint = if ($Type -eq 'VHD') { 
-            "flexapppackage/vhd/report" 
-        } else { 
-            "flexapppackage/vmdk/report" 
-        }
-        
-        $response = Invoke-ProfileUnityApi -Endpoint $endpoint
-        
-        if ($response) {
-            return $response | ForEach-Object {
-                [PSCustomObject]@{
-                    Name = $_.name
-                    Version = $_.version
-                    Size = $_.size
-                    SizeMB = [math]::Round($_.size / 1MB, 2)
-                    Created = $_.created
-                    Modified = $_.modified
-                    Enabled = -not $_.disabled
-                    InUse = $_.inUse
-                    AssignmentCount = $_.assignmentCount
-                }
-            }
-        }
-    }
-    catch {
-        Write-Error "Failed to get FlexApp report: $_"
-        throw
-    }
-}
-
-function Update-ProUFlexappCloud {
-    <#
-    .SYNOPSIS
-        Updates FlexApp packages from cloud storage.
-    
-    .DESCRIPTION
-        Synchronizes FlexApp packages with cloud storage.
-    
-    .EXAMPLE
-        Update-ProUFlexappCloud
-    #>
-    [CmdletBinding(SupportsShouldProcess)]
-    param()
-    
-    if ($PSCmdlet.ShouldProcess("FlexApp packages", "Update from cloud")) {
-        try {
-            Write-Host "Updating FlexApp packages from cloud storage..." -ForegroundColor Yellow
+        if ($response -and $response.tag) {
+            # Update the copy with new name
+            $copiedPackage = $response.tag
+            $copiedPackage.name = $NewName
             
-            $response = Invoke-ProfileUnityApi -Endpoint "flexapppackage/cloud/update" -Method POST
-            
-            if ($response) {
-                Write-Host "FlexApp cloud update completed" -ForegroundColor Green
-                
-                if ($response.updated) {
-                    Write-Host "  Updated: $($response.updated.Count)" -ForegroundColor Cyan
-                }
-                if ($response.added) {
-                    Write-Host "  Added: $($response.added.Count)" -ForegroundColor Cyan
-                }
-                if ($response.removed) {
-                    Write-Host "  Removed: $($response.removed.Count)" -ForegroundColor Cyan
-                }
-                
-                return $response
+            if ($Description) {
+                $copiedPackage.description = $Description
             }
+            else {
+                $copiedPackage.description = "Copy of $SourceName - $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
+            }
+            
+            # Remove ID so it creates a new package
+            $copiedPackage.PSObject.Properties.Remove('id')
+            
+            # Save the new package
+            $saveResponse = Invoke-ProfileUnityApi -Endpoint "flexapppackage" -Method POST -Body @{
+                flexapppackage = $copiedPackage
+            }
+            
+            Write-Host "FlexApp package copied successfully" -ForegroundColor Green
+            Write-Host "  Source: $SourceName" -ForegroundColor Cyan
+            Write-Host "  New: $NewName" -ForegroundColor Cyan
+            
+            return $saveResponse
         }
-        catch {
-            Write-Error "Failed to update FlexApp packages from cloud: $_"
-            throw
-        }
+    }
+    catch {
+        Write-Error "Failed to copy FlexApp package: $_"
+        throw
     }
 }
 
 function Test-ProUFlexapp {
     <#
     .SYNOPSIS
-        Tests a FlexApp package configuration.
+        Tests a ProfileUnity FlexApp package for issues.
     
     .DESCRIPTION
-        Validates FlexApp package settings and availability.
+        Validates FlexApp package settings and checks for common problems.
     
     .PARAMETER Name
         Name of the FlexApp package to test
     
     .EXAMPLE
-        Test-ProUFlexapp -Name "Microsoft Office"
+        Test-ProUFlexapp -Name "Google Chrome"
     #>
     [CmdletBinding()]
     param(
@@ -595,9 +373,6 @@ function Test-ProUFlexapp {
     )
     
     try {
-        Write-Host "Testing FlexApp package: $Name" -ForegroundColor Yellow
-        
-        # Get package details
         $packages = Get-ProUFlexapps
         $package = $packages | Where-Object { $_.Name -eq $Name }
         
@@ -605,65 +380,58 @@ function Test-ProUFlexapp {
             throw "FlexApp package '$Name' not found"
         }
         
+        Write-Verbose "Testing FlexApp package: $Name"
+        
+        # Get detailed package
+        $response = Invoke-ProfileUnityApi -Endpoint "flexapppackage/$($package.ID)"
+        $packageData = $response.tag
+        
         $issues = @()
         $warnings = @()
         
-        # Check if package is disabled
-        if (-not $package.Enabled) {
-            $warnings += "FlexApp package is disabled"
+        # Basic validation
+        if (-not $packageData.name) {
+            $issues += "Missing package name"
         }
         
-        # Check package path
-        if ([string]::IsNullOrWhiteSpace($package.Path) -and [string]::IsNullOrWhiteSpace($package.CloudPath)) {
-            $issues += "No package path specified"
+        if (-not $packageData.version) {
+            $warnings += "Missing version information"
         }
         
-        # Check size
-        if ($package.Size -eq 0) {
-            $warnings += "Package size is 0 bytes"
+        if (-not $packageData.applications -or $packageData.applications.Count -eq 0) {
+            $warnings += "Package has no applications defined"
         }
         
-        # Get working state
-        try {
-            $workingState = Get-ProUFlexappWorkingState -Name $Name
-            if ($workingState.State -ne "Ready") {
-                $warnings += "Package state: $($workingState.State)"
-            }
+        # Size validation
+        if ($packageData.size -and $packageData.size -gt 1073741824) { # 1GB
+            $warnings += "Package size is larger than 1GB, consider splitting into smaller packages"
         }
-        catch {
-            $warnings += "Could not retrieve working state"
+        
+        $isValid = $issues.Count -eq 0
+        
+        $result = [PSCustomObject]@{
+            PackageName = $Name
+            IsValid = $isValid
+            Issues = $issues
+            Warnings = $warnings
+            ApplicationCount = if ($packageData.applications) { $packageData.applications.Count } else { 0 }
+            TestDate = Get-Date
         }
         
         # Display results
-        Write-Host "`nTest Results:" -ForegroundColor Cyan
-        Write-Host "  Package Type: $($package.Type)" -ForegroundColor Gray
-        Write-Host "  Version: $($package.Version)" -ForegroundColor Gray
-        Write-Host "  Size: $($package.SizeMB) MB" -ForegroundColor Gray
-        
-        if ($issues.Count -eq 0 -and $warnings.Count -eq 0) {
-            Write-Host "  No issues found" -ForegroundColor Green
+        if ($isValid) {
+            Write-Host "FlexApp package '$Name' validation: PASSED" -ForegroundColor Green
         }
         else {
-            if ($issues.Count -gt 0) {
-                Write-Host "  Issues:" -ForegroundColor Red
-                $issues | ForEach-Object { Write-Host "    - $_" -ForegroundColor Red }
-            }
-            
-            if ($warnings.Count -gt 0) {
-                Write-Host "  Warnings:" -ForegroundColor Yellow
-                $warnings | ForEach-Object { Write-Host "    - $_" -ForegroundColor Yellow }
-            }
+            Write-Host "FlexApp package '$Name' validation: FAILED" -ForegroundColor Red
+            $issues | ForEach-Object { Write-Host "  ERROR: $_" -ForegroundColor Red }
         }
         
-        return [PSCustomObject]@{
-            PackageName = $Name
-            PackageType = $package.Type
-            Version = $package.Version
-            SizeMB = $package.SizeMB
-            Issues = $issues
-            Warnings = $warnings
-            IsValid = $issues.Count -eq 0
+        if ($warnings.Count -gt 0) {
+            $warnings | ForEach-Object { Write-Host "  WARNING: $_" -ForegroundColor Yellow }
         }
+        
+        return $result
     }
     catch {
         Write-Error "Failed to test FlexApp package: $_"
@@ -671,17 +439,74 @@ function Test-ProUFlexapp {
     }
 }
 
+function Add-ProUFlexappNote {
+    <#
+    .SYNOPSIS
+        Adds a note to the currently loaded FlexApp package.
+    
+    .DESCRIPTION
+        Adds a note or comment to the FlexApp package that's currently being edited.
+    
+    .PARAMETER Note
+        The note to add to the package
+    
+    .EXAMPLE
+        Add-ProUFlexappNote -Note "Updated for Windows 11 compatibility"
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Note
+    )
+    
+    # Check if FlexApp package is loaded for editing
+    $currentPackage = $null
+    if ($script:ModuleConfig -and $script:ModuleConfig.CurrentItems -and $script:ModuleConfig.CurrentItems.FlexApp) {
+        $currentPackage = $script:ModuleConfig.CurrentItems.FlexApp
+    }
+    elseif ($global:CurrentFlexapp) {
+        $currentPackage = $global:CurrentFlexapp
+    }
+    
+    if (-not $currentPackage) {
+        throw "No FlexApp package loaded for editing. Use Edit-ProUFlexapp first."
+    }
+    
+    # Add the note
+    if (-not $currentPackage.notes) {
+        $currentPackage | Add-Member -NotePropertyName 'notes' -NotePropertyValue @()
+    }
+    
+    $noteEntry = @{
+        text = $Note
+        author = $env:USERNAME
+        date = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    }
+    
+    $currentPackage.notes += $noteEntry
+    
+    # Update both storage locations
+    if ($script:ModuleConfig -and $script:ModuleConfig.CurrentItems) {
+        $script:ModuleConfig.CurrentItems.FlexApp = $currentPackage
+    }
+    if ($global:CurrentFlexapp) {
+        $global:CurrentFlexapp = $currentPackage
+    }
+    
+    Write-Host "Note added to FlexApp package" -ForegroundColor Green
+    Write-Host "Use Save-ProUFlexapp to save changes" -ForegroundColor Yellow
+}
+
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Get-ProUFlexapps',
     'Edit-ProUFlexapp',
     'Save-ProUFlexapp',
+    'New-ProUFlexapp',
     'Remove-ProUFlexapp',
-    'Enable-ProUFlexapp',
-    'Disable-ProUFlexapp',
-    'Add-ProUFlexappNote',
-    'Get-ProUFlexappWorkingState',
-    'Get-ProUFlexappReport',
-    'Update-ProUFlexappCloud',
-    'Test-ProUFlexapp'
+    'Copy-ProUFlexapp',
+    'Test-ProUFlexapp',
+    'Add-ProUFlexappNote'
 )
+#>

@@ -1,4 +1,4 @@
-# Database\DatabaseManagement.ps1 - ProfileUnity Database Management Functions (Enhanced)
+﻿# Database\DatabaseManagement.ps1 - ProfileUnity Database Management Functions (Enhanced)
 
 function Get-ProUDatabaseConnectionStatus {
     <#
@@ -1114,18 +1114,17 @@ function Get-ProUDatabaseScheduleList {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
-    'Get-ProUDatabaseConnectionStatus',
     'Get-ProUDatabaseConnectionString',
     'Copy-ProUDatabaseConnectionString',
     'New-ProUDatabaseBackup',
-    'New-ProUClusterDatabaseBackup',
     'Get-ProUDatabaseBackup',
     'Get-ProUDatabaseBackupList',
-    'Start-ProUDatabaseBackupSchedule',
-    'Invoke-ProUDatabaseSchedule',
     'New-ProUDatabaseBackupSchedule',
-    'Remove-ProUDatabaseBackupSchedule',
-    'Restore-ProUDatabase',
-    'Test-ProUDatabaseHealth'
-)
+    'Restore-ProUDatabase')
+#>
+
+
+
+

@@ -1,4 +1,4 @@
-# Core/TaskManagement.ps1 - Task monitoring and management functions
+﻿# Core/TaskManagement.ps1 - Task monitoring and management functions
 
 function Get-ProUTask {
     <#
@@ -178,8 +178,9 @@ function Wait-ProUTask {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
-    'Get-ProUTask',
-    'Stop-ProUTask', 
-    'Wait-ProUTask'
-)
+    )
+#>
+
+

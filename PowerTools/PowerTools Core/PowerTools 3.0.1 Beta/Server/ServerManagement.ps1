@@ -1,4 +1,4 @@
-# ServerManagement.ps1 - ProfileUnity Server Management Functions
+﻿# ServerManagement.ps1 - ProfileUnity Server Management Functions
 
 function Get-ProUServerSettings {
     <#
@@ -587,17 +587,19 @@ function Test-ProUServerConfiguration {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Get-ProUServerSettings',
     'Set-ProUServerSetting', 
     'Get-ProUServerAbout',
-    'Get-ProUServerCertificates',
-    'Add-ProUServerCertificate',
     'Deploy-ProUConfiguration',
-    'Restart-ProUWebServices',
     'Get-ProUServerUpdate',
-    'Start-ProUServerUpdate',
     'Get-ProUServerVariables',
     'Set-ProUServerServiceAccount',
     'Test-ProUServerConfiguration'
 )
+#>
+
+
+
+

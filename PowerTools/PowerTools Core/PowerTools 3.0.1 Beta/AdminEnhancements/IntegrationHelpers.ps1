@@ -576,13 +576,8 @@ function Start-ADServicesWizard {
     if ($configOUFilter -match '^y') {
         Write-Host "Available OUs:" -ForegroundColor Yellow
         try {
-            $ous = Get-ProUADOrganizationalUnits -Domain $Domain
-            for ($i = 0; $i -lt [math]::Min($ous.Count, 10); $i++) {
-                Write-Host "  $($ous[$i].Name)" -ForegroundColor White
-            }
-            if ($ous.Count -gt 10) {
-                Write-Host "  ... and $($ous.Count - 10) more" -ForegroundColor Gray
-            }
+            Write-Warning "Get-ProUADOrganizationalUnits function is not available in this ProfileUnity version"
+            Write-Host "  OU filtering can be configured manually in the ProfileUnity console." -ForegroundColor White
         }
         catch {
             Write-Warning "Could not retrieve OU list: $_"
@@ -738,9 +733,12 @@ function Get-ProUIntegrationStatus {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
+<#
 Export-ModuleMember -Function @(
     'Export-ProUToExcel',
     'Connect-ProUToAD',
     'Test-ProUExcelExport',
     'Get-ProUIntegrationStatus'
 )
+#>

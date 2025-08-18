@@ -1,4 +1,4 @@
-# Core/SearchFunctions.ps1 - ProfileUnity Global Search Functions with Name Resolution
+﻿# Core/SearchFunctions.ps1 - ProfileUnity Global Search Functions with Name Resolution
 
 function Search-ProUGlobal {
     <#
@@ -602,11 +602,16 @@ function Resolve-ProUObjectUUID {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
-    'Search-ProUGlobal',
     'Find-ProUObject', 
     'Search-ProUByModifiedDate',
     'Search-ProUByUser',
     'Resolve-ProUObjectId',
     'Resolve-ProUObjectUUID'
 )
+#>
+
+
+
+

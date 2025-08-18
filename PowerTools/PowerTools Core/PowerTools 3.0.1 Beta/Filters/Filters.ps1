@@ -1,4 +1,6 @@
 # Filters.ps1 - ProfileUnity Filter Management Functions
+# Location: \Filters\Filters.ps1
+# Compatible with: ProfileUnity PowerTools v3.0 / PowerShell 5.1+
 
 function Get-ProUFilters {
     <#
@@ -11,64 +13,52 @@ function Get-ProUFilters {
     .PARAMETER Name
         Optional name filter (supports wildcards)
     
-    .PARAMETER Type
-        Filter by type (User, Computer, Group, OU, etc.)
-    
-    .PARAMETER Enabled
-        Filter by enabled/disabled status
-    
     .EXAMPLE
         Get-ProUFilters
         
     .EXAMPLE
-        Get-ProUFilters -Name "*Domain*" -Type Computer
+        Get-ProUFilters -Name "*Test*"
     #>
     [CmdletBinding()]
     param(
-        [string]$Name,
-        
-        [ValidateSet('User', 'Computer', 'Group', 'OU', 'IPRange', 'Custom')]
-        [string]$Type,
-        
-        [bool]$Enabled
+        [string]$Name
     )
     
     try {
         Write-Verbose "Retrieving filters..."
         $response = Invoke-ProfileUnityApi -Endpoint "filter"
         
-        if (-not $response -or -not $response.Tag) {
+        # Handle different response formats consistently
+        $filters = if ($response.Tag.Rows) { 
+            $response.Tag.Rows 
+        } elseif ($response.tag) { 
+            $response.tag 
+        } elseif ($response) { 
+            $response 
+        } else { 
+            @() 
+        }
+        
+        if (-not $filters) {
             Write-Warning "No filters found"
             return
         }
         
-        $filters = $response.Tag.Rows
-        
-        # Apply filters
+        # Filter by name if specified
         if ($Name) {
             $filters = $filters | Where-Object { $_.name -like $Name }
         }
         
-        if ($Type) {
-            $filters = $filters | Where-Object { $_.filterType -eq $Type }
-        }
-        
-        if ($PSBoundParameters.ContainsKey('Enabled')) {
-            $filters = $filters | Where-Object { -not $_.disabled -eq $Enabled }
-        }
-        
-        # Format output
-        $filters | ForEach-Object {
+        return $filters | ForEach-Object {
             [PSCustomObject]@{
                 Name = $_.name
                 ID = $_.id
                 Type = $_.filterType
-                Priority = $_.priority
-                Enabled = -not $_.disabled
                 Description = $_.description
-                CreatedBy = $_.createdBy
-                ModifiedBy = $_.modifiedBy
+                Enabled = -not $_.disabled
+                Priority = $_.priority
                 LastModified = $_.lastModified
+                ModifiedBy = $_.modifiedBy
             }
         }
     }
@@ -93,7 +83,7 @@ function Edit-ProUFilter {
         Suppress confirmation messages
     
     .EXAMPLE
-        Edit-ProUFilter -Name "Domain Computers"
+        Edit-ProUFilter -Name "Test Filter"
     #>
     [CmdletBinding()]
     param(
@@ -123,7 +113,13 @@ function Edit-ProUFilter {
         
         $filterData = $response.tag
         
-        # Store in module config
+        # Store in module config with null checking
+        if (-not $script:ModuleConfig) {
+            $script:ModuleConfig = @{ CurrentItems = @{} }
+        }
+        if (-not $script:ModuleConfig.CurrentItems) {
+            $script:ModuleConfig.CurrentItems = @{}
+        }
         $script:ModuleConfig.CurrentItems.Filter = $filterData
         
         # Also set global variable for backward compatibility
@@ -134,13 +130,11 @@ function Edit-ProUFilter {
             Write-Host "Type: $($filterData.filterType)" -ForegroundColor Cyan
             Write-Host "Priority: $($filterData.priority)" -ForegroundColor Cyan
             
-            # Show filter criteria summary
-            if ($filterData.FilterCriteria) {
-                Write-Host "Criteria: $($filterData.FilterCriteria.Count) conditions" -ForegroundColor Cyan
+            # Show filter criteria summary if available
+            if ($filterData.criteria) {
+                Write-Host "Criteria: $($filterData.criteria.Count) rules" -ForegroundColor Gray
             }
         }
-        
-        return $filterData
     }
     catch {
         Write-Error "Failed to edit filter: $_"
@@ -166,48 +160,10 @@ function Save-ProUFilter {
         Save-ProUFilter -Force
     #>
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
-    param(
-        [switch]$Force
-    )
+    param([switch]$Force) 
     
-    # Get current filter
-    $currentFilter = $script:ModuleConfig.CurrentItems.Filter
-    if (-not $currentFilter -and $global:CurrentFilter) {
-        $currentFilter = $global:CurrentFilter
-    }
-    
-    if (-not $currentFilter) {
-        throw "No filter loaded for editing. Use Edit-ProUFilter first."
-    }
-    
-    $filterName = $currentFilter.name
-    
-    if ($Force -or $PSCmdlet.ShouldProcess($filterName, "Save filter")) {
-        try {
-            Write-Verbose "Saving filter: $filterName"
-            
-            # Prepare the filter object
-            $filterToSave = @{
-                Filters = $currentFilter
-            }
-            
-            $response = Invoke-ProfileUnityApi -Endpoint "filter" -Method POST -Body $filterToSave
-            
-            if ($response) {
-                Write-Host "Filter '$filterName' saved successfully" -ForegroundColor Green
-                Write-LogMessage -Message "Filter '$filterName' saved by $env:USERNAME" -Level Info
-                
-                # Clear current filter after successful save
-                $script:ModuleConfig.CurrentItems.Filter = $null
-                $global:CurrentFilter = $null
-                
-                return $response
-            }
-        }
-        catch {
-            Write-Error "Failed to save filter: $_"
-            throw
-        }
+    if ($Force -or $PSCmdlet.ShouldProcess("filter on ProfileUnity server", "Save")) {
+        Save-ProfileUnityItem -ItemType 'filter' -Force:$Force -Confirm:$false
     }
     else {
         Write-Host "Save cancelled" -ForegroundColor Yellow
@@ -220,22 +176,22 @@ function New-ProUFilter {
         Creates a new ProfileUnity filter.
     
     .DESCRIPTION
-        Creates a new filter with specified criteria.
+        Creates a new filter with basic settings.
     
     .PARAMETER Name
-        Name for the new filter
+        Name of the new filter
     
     .PARAMETER Type
-        Type of filter (User, Computer, Group, etc.)
+        Filter type (User, Computer, etc.)
     
     .PARAMETER Description
-        Description of the filter
+        Optional description
     
     .PARAMETER Priority
-        Filter priority (default: 50)
+        Filter priority (default: 100)
     
     .EXAMPLE
-        New-ProUFilter -Name "Test Users" -Type User -Description "Test user group"
+        New-ProUFilter -Name "Test Filter" -Type "User" -Description "Test filter"
     #>
     [CmdletBinding()]
     param(
@@ -243,73 +199,57 @@ function New-ProUFilter {
         [string]$Name,
         
         [Parameter(Mandatory)]
-        [ValidateSet('User', 'Computer', 'Group', 'OU', 'IPRange', 'Custom')]
+        [ValidateSet('User', 'Computer', 'Group', 'OU')]
         [string]$Type,
         
-        [string]$Description = "Created by PowerTools",
+        [string]$Description = "",
         
-        [ValidateRange(1, 100)]
-        [int]$Priority = 50
+        [int]$Priority = 100
     )
     
     try {
-        # Create new filter object
+        # Check if filter already exists
+        $existingFilters = Get-ProUFilters
+        if ($existingFilters | Where-Object { $_.Name -eq $Name }) {
+            throw "Filter '$Name' already exists"
+        }
+        
+        Write-Verbose "Creating new filter: $Name"
+        
+        # Create complete filter object with all required fields
         $newFilter = @{
-            name = $Name
-            description = $Description
-            filterType = $Type
-            priority = $Priority
-            disabled = $false
-            FilterCriteria = @()
+            Name = $Name
+            Description = $Description
+            FilterType = $Type
+            Priority = $Priority
+            Disabled = $false
+            Comments = ""
+            # Filter criteria and rules
+            FilterRules = @()
+            Connections = 0
+            MachineClasses = 0
+            OperatingSystems = 0
+            SystemEvents = 0
+            RuleAggregate = 0
+            ClientId = $null
+            ClientSecret = $null
         }
         
-        # Add default criteria based on type
-        switch ($Type) {
-            'User' {
-                $newFilter.FilterCriteria += @{
-                    criteriaType = "UserName"
-                    operator = "Equals"
-                    value = ""
-                }
-            }
-            'Computer' {
-                $newFilter.FilterCriteria += @{
-                    criteriaType = "ComputerName"
-                    operator = "Equals"
-                    value = ""
-                }
-            }
-            'Group' {
-                $newFilter.FilterCriteria += @{
-                    criteriaType = "GroupMembership"
-                    operator = "MemberOf"
-                    value = ""
-                }
-            }
-            'OU' {
-                $newFilter.FilterCriteria += @{
-                    criteriaType = "OrganizationalUnit"
-                    operator = "InOU"
-                    value = ""
-                }
-            }
-            'IPRange' {
-                $newFilter.FilterCriteria += @{
-                    criteriaType = "IPAddress"
-                    operator = "InRange"
-                    value = ""
-                }
-            }
+        # Create the filter - use direct object, not wrapped
+        $response = Invoke-ProfileUnityApi -Endpoint "filter" -Method POST -Body $newFilter
+        
+        # Validate response
+        if ($response -and $response.type -eq "success") {
+            Write-Host "Filter '$Name' created successfully" -ForegroundColor Green
+            Write-Verbose "Filter ID: $($response.tag.id)"
+            return $response.tag
         }
-        
-        $response = Invoke-ProfileUnityApi -Endpoint "filter" -Method POST -Body @{
-            Filters = $newFilter
+        elseif ($response -and $response.type -eq "error") {
+            throw "Server error: $($response.message)"
         }
-        
-        Write-Host "Filter '$Name' created successfully" -ForegroundColor Green
-        Write-Host "Edit the filter to add specific criteria" -ForegroundColor Yellow
-        
-        return $response
+        else {
+            throw "Unexpected response from server: $($response | ConvertTo-Json -Depth 2)"
+        }
     }
     catch {
         Write-Error "Failed to create filter: $_"
@@ -343,7 +283,6 @@ function Remove-ProUFilter {
     )
     
     try {
-        # Find filter
         $filters = Get-ProUFilters
         $filter = $filters | Where-Object { $_.Name -eq $Name }
         
@@ -351,43 +290,17 @@ function Remove-ProUFilter {
             throw "Filter '$Name' not found"
         }
         
-        # Check if filter is in use
-        $usageResponse = Invoke-ProfileUnityApi -Endpoint "filter/usedin"
-        if ($usageResponse) {
-            $usage = $usageResponse | Where-Object { $_.filterId -eq $filter.ID }
-            if ($usage) {
-                Write-Warning "Filter '$Name' is in use by the following configurations:"
-                $usage | ForEach-Object {
-                    Write-Warning "  - $($_.configurationName)"
-                }
-                
-                if (-not $Force) {
-                    if (-not (Confirm-Action -Title "Filter In Use" -Message "Filter is in use. Delete anyway?")) {
-                        Write-Host "Delete cancelled" -ForegroundColor Yellow
-                        return
-                    }
-                }
-            }
-        }
-        
         if ($Force -or $PSCmdlet.ShouldProcess($Name, "Remove filter")) {
-            Write-Verbose "Deleting filter ID: $($filter.ID)"
-            
-            $response = Invoke-ProfileUnityApi -Endpoint "filter/remove" -Method DELETE -Body @{
-                ids = @($filter.ID)
-            }
-            
-            Write-Host "Filter '$Name' deleted successfully" -ForegroundColor Green
-            Write-LogMessage -Message "Filter '$Name' deleted by $env:USERNAME" -Level Info
-            
+            $response = Invoke-ProfileUnityApi -Endpoint "filter/$($filter.ID)" -Method DELETE
+            Write-Host "Filter '$Name' removed successfully" -ForegroundColor Green
             return $response
         }
         else {
-            Write-Host "Delete cancelled" -ForegroundColor Yellow
+            Write-Host "Remove cancelled" -ForegroundColor Yellow
         }
     }
     catch {
-        Write-Error "Failed to delete filter: $_"
+        Write-Error "Failed to remove filter: $_"
         throw
     }
 }
@@ -395,7 +308,7 @@ function Remove-ProUFilter {
 function Copy-ProUFilter {
     <#
     .SYNOPSIS
-        Creates a copy of a ProfileUnity filter.
+        Copies an existing ProfileUnity filter.
     
     .DESCRIPTION
         Copies an existing filter with a new name.
@@ -406,8 +319,11 @@ function Copy-ProUFilter {
     .PARAMETER NewName
         Name for the new filter
     
+    .PARAMETER Description
+        Optional new description
+    
     .EXAMPLE
-        Copy-ProUFilter -SourceName "Domain Users" -NewName "Test Users"
+        Copy-ProUFilter -SourceName "Production Filter" -NewName "Test Filter"
     #>
     [CmdletBinding()]
     param(
@@ -415,7 +331,9 @@ function Copy-ProUFilter {
         [string]$SourceName,
         
         [Parameter(Mandatory)]
-        [string]$NewName
+        [string]$NewName,
+        
+        [string]$Description
     )
     
     try {
@@ -429,18 +347,27 @@ function Copy-ProUFilter {
         
         Write-Verbose "Copying filter ID: $($sourceFilter.ID)"
         
-        # Copy the filter
-        $response = Invoke-ProfileUnityApi -Endpoint "filter/$($sourceFilter.ID)/copy" -Method POST
+        # Get full filter details
+        $response = Invoke-ProfileUnityApi -Endpoint "filter/$($sourceFilter.ID)"
         
         if ($response -and $response.tag) {
             # Update the copy with new name
             $copiedFilter = $response.tag
             $copiedFilter.name = $NewName
-            $copiedFilter.description = "Copy of $SourceName - $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
             
-            # Save the updated filter
+            if ($Description) {
+                $copiedFilter.description = $Description
+            }
+            else {
+                $copiedFilter.description = "Copy of $SourceName - $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
+            }
+            
+            # Remove ID so it creates a new filter
+            $copiedFilter.PSObject.Properties.Remove('id')
+            
+            # Save the new filter
             $saveResponse = Invoke-ProfileUnityApi -Endpoint "filter" -Method POST -Body @{
-                Filters = $copiedFilter
+                filter = $copiedFilter
             }
             
             Write-Host "Filter copied successfully" -ForegroundColor Green
@@ -459,155 +386,24 @@ function Copy-ProUFilter {
 function Test-ProUFilter {
     <#
     .SYNOPSIS
-        Tests a ProfileUnity filter against AD objects.
+        Tests a ProfileUnity filter for issues.
     
     .DESCRIPTION
-        Validates filter criteria and optionally tests against specific objects.
+        Validates filter settings and checks for common problems.
     
     .PARAMETER Name
         Name of the filter to test
     
-    .PARAMETER TestUser
-        Username to test against the filter
-    
-    .PARAMETER TestComputer
-        Computer name to test against the filter
-    
     .EXAMPLE
-        Test-ProUFilter -Name "Domain Users"
-        
-    .EXAMPLE
-        Test-ProUFilter -Name "IT Users" -TestUser "jsmith"
+        Test-ProUFilter -Name "Test Filter"
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [string]$Name,
-        
-        [string]$TestUser,
-        
-        [string]$TestComputer
+        [string]$Name
     )
     
     try {
-        Write-Host "Testing filter: $Name" -ForegroundColor Yellow
-        
-        # Load the filter
-        Edit-ProUFilter -Name $Name -Quiet
-        
-        $filter = $script:ModuleConfig.CurrentItems.Filter
-        if (-not $filter) {
-            throw "Failed to load filter"
-        }
-        
-        $issues = @()
-        $warnings = @()
-        
-        # Check if filter is disabled
-        if ($filter.disabled) {
-            $warnings += "Filter is disabled"
-        }
-        
-        # Check for criteria
-        if (-not $filter.FilterCriteria -or $filter.FilterCriteria.Count -eq 0) {
-            $issues += "Filter has no criteria defined"
-        }
-        else {
-            # Validate each criterion
-            foreach ($criterion in $filter.FilterCriteria) {
-                if ([string]::IsNullOrWhiteSpace($criterion.value)) {
-                    $warnings += "Criterion '$($criterion.criteriaType)' has no value specified"
-                }
-            }
-        }
-        
-        # Test against specific objects if provided
-        if ($TestUser -or $TestComputer) {
-            Write-Host "`nTesting against objects:" -ForegroundColor Cyan
-            
-            if ($TestUser) {
-                Write-Host "  User: $TestUser" -ForegroundColor Gray
-                # Would need actual AD lookup here
-                Write-Host "    [Test functionality not implemented]" -ForegroundColor Yellow
-            }
-            
-            if ($TestComputer) {
-                Write-Host "  Computer: $TestComputer" -ForegroundColor Gray
-                # Would need actual AD lookup here
-                Write-Host "    [Test functionality not implemented]" -ForegroundColor Yellow
-            }
-        }
-        
-        # Display results
-        Write-Host "`nTest Results:" -ForegroundColor Cyan
-        
-        if ($issues.Count -eq 0 -and $warnings.Count -eq 0) {
-            Write-Host "  No issues found" -ForegroundColor Green
-        }
-        else {
-            if ($issues.Count -gt 0) {
-                Write-Host "  Issues:" -ForegroundColor Red
-                $issues | ForEach-Object { Write-Host "    - $_" -ForegroundColor Red }
-            }
-            
-            if ($warnings.Count -gt 0) {
-                Write-Host "  Warnings:" -ForegroundColor Yellow
-                $warnings | ForEach-Object { Write-Host "    - $_" -ForegroundColor Yellow }
-            }
-        }
-        
-        # Clear the loaded filter
-        $script:ModuleConfig.CurrentItems.Filter = $null
-        $global:CurrentFilter = $null
-        
-        return [PSCustomObject]@{
-            FilterName = $Name
-            FilterType = $filter.filterType
-            Priority = $filter.priority
-            CriteriaCount = if ($filter.FilterCriteria) { $filter.FilterCriteria.Count } else { 0 }
-            Issues = $issues
-            Warnings = $warnings
-            IsValid = $issues.Count -eq 0
-        }
-    }
-    catch {
-        Write-Error "Failed to test filter: $_"
-        throw
-    }
-}
-
-function Export-ProUFilter {
-    <#
-    .SYNOPSIS
-        Exports a ProfileUnity filter to JSON.
-    
-    .DESCRIPTION
-        Exports filter settings to a JSON file.
-    
-    .PARAMETER Name
-        Name of the filter to export
-    
-    .PARAMETER SavePath
-        Directory to save the export
-    
-    .EXAMPLE
-        Export-ProUFilter -Name "Domain Users" -SavePath "C:\Backups"
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$Name,
-        
-        [Parameter(Mandatory)]
-        [string]$SavePath
-    )
-    
-    try {
-        if (-not (Test-Path $SavePath)) {
-            throw "Save path does not exist: $SavePath"
-        }
-        
-        # Find filter
         $filters = Get-ProUFilters
         $filter = $filters | Where-Object { $_.Name -eq $Name }
         
@@ -615,327 +411,110 @@ function Export-ProUFilter {
             throw "Filter '$Name' not found"
         }
         
-        Write-Verbose "Exporting filter ID: $($filter.ID)"
+        Write-Verbose "Testing filter: $Name"
         
-        # Build output filename
-        $safeFileName = ConvertTo-SafeFileName -FileName $Name
-        $outputFile = Join-Path $SavePath "$safeFileName.json"
+        # Get detailed filter
+        $response = Invoke-ProfileUnityApi -Endpoint "filter/$($filter.ID)"
+        $filterData = $response.tag
         
-        # Download the filter
-        $endpoint = "filter/download?ids=$($filter.ID)"
-        Invoke-ProfileUnityApi -Endpoint $endpoint -Method POST -OutFile $outputFile
+        $issues = @()
+        $warnings = @()
         
-        Write-Host "Filter exported: $outputFile" -ForegroundColor Green
-        return Get-Item $outputFile
-    }
-    catch {
-        Write-Error "Failed to export filter: $_"
-        throw
-    }
-}
-
-function Export-ProUFilterAll {
-    <#
-    .SYNOPSIS
-        Exports all ProfileUnity filters.
-    
-    .DESCRIPTION
-        Exports all filters to JSON files in the specified directory.
-    
-    .PARAMETER SavePath
-        Directory to save the exports
-    
-    .PARAMETER IncludeDisabled
-        Include disabled filters
-    
-    .EXAMPLE
-        Export-ProUFilterAll -SavePath "C:\Backups\Filters"
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$SavePath,
-        
-        [switch]$IncludeDisabled
-    )
-    
-    try {
-        if (-not (Test-Path $SavePath)) {
-            New-Item -ItemType Directory -Path $SavePath -Force | Out-Null
+        # Basic validation
+        if (-not $filterData.name) {
+            $issues += "Missing filter name"
         }
         
-        $filters = Get-ProUFilters
-        
-        if (-not $IncludeDisabled) {
-            $filters = $filters | Where-Object { $_.Enabled }
+        if (-not $filterData.filterType) {
+            $issues += "Missing filter type"
         }
         
-        if (-not $filters) {
-            Write-Warning "No filters found to export"
-            return
+        if (-not $filterData.criteria -or $filterData.criteria.Count -eq 0) {
+            $warnings += "Filter has no criteria defined"
         }
         
-        Write-Host "Exporting $($filters.Count) filters..." -ForegroundColor Cyan
-        
-        $exported = 0
-        $failed = 0
-        
-        foreach ($filter in $filters) {
-            try {
-                Export-ProUFilter -Name $filter.Name -SavePath $SavePath
-                $exported++
-            }
-            catch {
-                Write-Warning "Failed to export '$($filter.Name)': $_"
-                $failed++
-            }
+        if ($filterData.priority -lt 1 -or $filterData.priority -gt 999) {
+            $warnings += "Filter priority should be between 1 and 999"
         }
         
-        Write-Host "`nExport Summary:" -ForegroundColor Cyan
-        Write-Host "  Exported: $exported" -ForegroundColor Green
-        if ($failed -gt 0) {
-            Write-Host "  Failed: $failed" -ForegroundColor Red
+        $isValid = $issues.Count -eq 0
+        
+        $result = [PSCustomObject]@{
+            FilterName = $Name
+            IsValid = $isValid
+            Issues = $issues
+            Warnings = $warnings
+            CriteriaCount = if ($filterData.criteria) { $filterData.criteria.Count } else { 0 }
+            TestDate = Get-Date
         }
         
-        return [PSCustomObject]@{
-            ExportPath = $SavePath
-            TotalFilters = $filters.Count
-            Exported = $exported
-            Failed = $failed
-        }
-    }
-    catch {
-        Write-Error "Failed to export filters: $_"
-        throw
-    }
-}
-
-function Import-ProUFilter {
-    <#
-    .SYNOPSIS
-        Imports a ProfileUnity filter from JSON.
-    
-    .DESCRIPTION
-        Imports a filter from a JSON file.
-    
-    .PARAMETER JsonFile
-        Path to the JSON file to import
-    
-    .PARAMETER NewName
-        Optional new name for the imported filter
-    
-    .EXAMPLE
-        Import-ProUFilter -JsonFile "C:\Backups\filter.json"
-    #>
-    [CmdletBinding()]
-    param(
-        [string]$JsonFile,
-        
-        [string]$NewName
-    )
-    
-    try {
-        # Get file path if not provided
-        if (-not $JsonFile) {
-            $JsonFile = Get-FileName -Filter $script:FileFilters.Json -Title "Select Filter JSON"
-            if (-not $JsonFile) {
-                Write-Host "No file selected" -ForegroundColor Yellow
-                return
-            }
-        }
-        
-        if (-not (Test-Path $JsonFile)) {
-            throw "File not found: $JsonFile"
-        }
-        
-        Write-Verbose "Importing filter from: $JsonFile"
-        
-        # Read and parse JSON
-        $jsonContent = Get-Content $JsonFile -Raw | ConvertFrom-Json
-        
-        # Extract filter object
-        $filterObject = if ($jsonContent.Filters) { 
-            $jsonContent.Filters 
-        } else { 
-            $jsonContent 
-        }
-        
-        # Update name if specified
-        if ($NewName) {
-            $filterObject.name = $NewName
+        # Display results
+        if ($isValid) {
+            Write-Host "Filter '$Name' validation: PASSED" -ForegroundColor Green
         }
         else {
-            # Add import suffix to avoid conflicts
-            $filterObject.name = "$($filterObject.name) - Imported $(Get-Date -Format 'yyyyMMdd-HHmm')"
+            Write-Host "Filter '$Name' validation: FAILED" -ForegroundColor Red
+            $issues | ForEach-Object { Write-Host "  ERROR: $_" -ForegroundColor Red }
         }
         
-        # Clear ID to create new
-        $filterObject.ID = $null
+        if ($warnings.Count -gt 0) {
+            $warnings | ForEach-Object { Write-Host "  WARNING: $_" -ForegroundColor Yellow }
+        }
         
-        # Import the filter
-        $response = Invoke-ProfileUnityApi -Endpoint "filter/import" -Method POST -Body @($filterObject)
+        return $result
+    }
+    catch {
+        Write-Error "Failed to test filter: $_"
+        throw
+    }
+}
+
+function Get-ProUFilterTypes {
+    <#
+    .SYNOPSIS
+        Gets available filter types.
+    
+    .DESCRIPTION
+        Retrieves the list of available filter types.
+    
+    .EXAMPLE
+        Get-ProUFilterTypes
+    #>
+    [CmdletBinding()]
+    param()
+    
+    try {
+        $response = Invoke-ProfileUnityApi -Endpoint "filter/types"
         
         if ($response) {
-            Write-Host "Filter imported successfully: $($filterObject.name)" -ForegroundColor Green
-            return $response
-        }
-    }
-    catch {
-        Write-Error "Failed to import filter: $_"
-        throw
-    }
-}
-
-function Import-ProUFilterAll {
-    <#
-    .SYNOPSIS
-        Imports multiple ProfileUnity filters from a directory.
-    
-    .DESCRIPTION
-        Imports all JSON filter files from a directory.
-    
-    .PARAMETER SourceDir
-        Directory containing JSON files to import
-    
-    .EXAMPLE
-        Import-ProUFilterAll -SourceDir "C:\Backups\Filters"
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$SourceDir
-    )
-    
-    try {
-        if (-not (Test-Path $SourceDir)) {
-            throw "Source directory not found: $SourceDir"
-        }
-        
-        $jsonFiles = Get-ChildItem -Path $SourceDir -Filter "*.json"
-        
-        if (-not $jsonFiles) {
-            Write-Warning "No JSON files found in: $SourceDir"
-            return
-        }
-        
-        Write-Host "Importing $($jsonFiles.Count) filter files..." -ForegroundColor Cyan
-        
-        $imported = 0
-        $failed = 0
-        
-        foreach ($file in $jsonFiles) {
-            try {
-                Write-Host "  Processing: $($file.Name)" -NoNewline
-                Import-ProUFilter -JsonFile $file.FullName
-                $imported++
-                Write-Host " [OK]" -ForegroundColor Green
-            }
-            catch {
-                $failed++
-                Write-Host " [FAILED]" -ForegroundColor Red
-                Write-Warning "    Error: $_"
+            return $response | ForEach-Object {
+                [PSCustomObject]@{
+                    FilterType = $_.type
+                    DisplayName = $_.displayName
+                    Description = $_.description
+                }
             }
         }
-        
-        Write-Host "`nImport Summary:" -ForegroundColor Cyan
-        Write-Host "  Imported: $imported" -ForegroundColor Green
-        if ($failed -gt 0) {
-            Write-Host "  Failed: $failed" -ForegroundColor Red
-        }
-        
-        return [PSCustomObject]@{
-            SourceDirectory = $SourceDir
-            TotalFiles = $jsonFiles.Count
-            Imported = $imported
-            Failed = $failed
+        else {
+            # Return common filter types if API doesn't provide them
+            return @(
+                [PSCustomObject]@{ FilterType = 'User'; DisplayName = 'User'; Description = 'User-based filter' }
+                [PSCustomObject]@{ FilterType = 'Computer'; DisplayName = 'Computer'; Description = 'Computer-based filter' }
+                [PSCustomObject]@{ FilterType = 'Group'; DisplayName = 'Group'; Description = 'Group-based filter' }
+                [PSCustomObject]@{ FilterType = 'OU'; DisplayName = 'Organizational Unit'; Description = 'OU-based filter' }
+            )
         }
     }
     catch {
-        Write-Error "Failed to import filters: $_"
-        throw
-    }
-}
-
-function Add-ProUFilterCriteria {
-    <#
-    .SYNOPSIS
-        Adds criteria to the currently edited filter.
-    
-    .DESCRIPTION
-        Adds a new criterion to the filter being edited.
-    
-    .PARAMETER CriteriaType
-        Type of criteria to add
-    
-    .PARAMETER Operator
-        Comparison operator
-    
-    .PARAMETER Value
-        Value for the criteria
-    
-    .EXAMPLE
-        Add-ProUFilterCriteria -CriteriaType "UserName" -Operator "StartsWith" -Value "admin"
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [ValidateSet('UserName', 'ComputerName', 'GroupMembership', 'OrganizationalUnit', 
-                     'IPAddress', 'OSVersion', 'Domain')]
-        [string]$CriteriaType,
-        
-        [Parameter(Mandatory)]
-        [ValidateSet('Equals', 'NotEquals', 'StartsWith', 'EndsWith', 'Contains', 
-                     'NotContains', 'MemberOf', 'NotMemberOf', 'InOU', 'NotInOU', 'InRange')]
-        [string]$Operator,
-        
-        [Parameter(Mandatory)]
-        [string]$Value
-    )
-    
-    # Get current filter
-    $currentFilter = $script:ModuleConfig.CurrentItems.Filter
-    if (-not $currentFilter -and $global:CurrentFilter) {
-        $currentFilter = $global:CurrentFilter
-    }
-    
-    if (-not $currentFilter) {
-        throw "No filter loaded for editing. Use Edit-ProUFilter first."
-    }
-    
-    try {
-        # Initialize criteria array if needed
-        if (-not $currentFilter.FilterCriteria) {
-            $currentFilter | Add-Member -NotePropertyName FilterCriteria -NotePropertyValue @() -Force
-        }
-        
-        # Create new criterion
-        $newCriterion = @{
-            criteriaType = $CriteriaType
-            operator = $Operator
-            value = $Value
-            enabled = $true
-        }
-        
-        # Add to filter
-        $currentFilter.FilterCriteria += $newCriterion
-        
-        # Update both storage locations
-        $script:ModuleConfig.CurrentItems.Filter = $currentFilter
-        $global:CurrentFilter = $currentFilter
-        
-        Write-Host "Criteria added to filter" -ForegroundColor Green
-        Write-Host "  Type: $CriteriaType" -ForegroundColor Cyan
-        Write-Host "  Operator: $Operator" -ForegroundColor Cyan
-        Write-Host "  Value: $Value" -ForegroundColor Cyan
-        Write-Host "Use Save-ProUFilter to save changes" -ForegroundColor Yellow
-    }
-    catch {
-        Write-Error "Failed to add filter criteria: $_"
+        Write-Error "Failed to retrieve filter types: $_"
         throw
     }
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
+# Export-ModuleMember removed to prevent conflicts when dot-sourcing
+<#
 Export-ModuleMember -Function @(
     'Get-ProUFilters',
     'Edit-ProUFilter',
@@ -944,9 +523,6 @@ Export-ModuleMember -Function @(
     'Remove-ProUFilter',
     'Copy-ProUFilter',
     'Test-ProUFilter',
-    'Export-ProUFilter',
-    'Export-ProUFilterAll',
-    'Import-ProUFilter',
-    'Import-ProUFilterAll',
-    'Add-ProUFilterCriteria'
+    'Get-ProUFilterTypes'
 )
+#>

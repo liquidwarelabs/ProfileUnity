@@ -1,4 +1,9 @@
-# Variables.ps1 - Module Configuration and Global Variables
+# Core\Variables.ps1 - Module Configuration and Global Variables
+# Relative Path: \Core\Variables.ps1
+
+# =============================================================================
+# MODULE CONFIGURATION AND VARIABLES
+# =============================================================================
 
 # Module configuration storage
 $script:ModuleConfig = @{
@@ -14,7 +19,7 @@ $script:ModuleConfig = @{
     DefaultTimeout = 30
     DefaultPageSize = 100
     
-    # Current working items
+    # Current working items - Initialize with proper structure
     CurrentItems = @{
         Config = $null
         Filter = $null
@@ -117,6 +122,33 @@ function Initialize-ProfileUnityModule {
     #>
     [CmdletBinding()]
     param()
+    
+    # Ensure ModuleConfig is properly initialized
+    if (-not $script:ModuleConfig) {
+        Write-Warning "Reinitializing ModuleConfig structure"
+        $script:ModuleConfig = @{
+            BaseUrl = $null
+            ServerName = $null
+            Port = 8000
+            Session = $null
+            Connected = $false
+            ConnectedAt = $null
+            DefaultTimeout = 30
+            DefaultPageSize = 100
+            CurrentItems = @{
+                Config = $null
+                Filter = $null
+                PortRule = $null
+                FlexApp = $null
+                ADMXTemplate = $null
+                CloudCredential = $null
+            }
+            ModulePath = $PSScriptRoot
+            ModuleVersion = '3.0.0'
+            MinApiVersion = '7.0'
+            MaxApiVersion = '8.0'
+        }
+    }
     
     # Create required directories
     foreach ($path in $script:DefaultPaths.Values) {
@@ -248,13 +280,62 @@ function Set-ProfileUnityDefaultPath {
     }
 }
 
+function Reset-ProfileUnityModuleConfig {
+    <#
+    .SYNOPSIS
+        Resets the module configuration to defaults.
+    
+    .DESCRIPTION
+        Clears all module configuration and reinitializes with defaults.
+    
+    .EXAMPLE
+        Reset-ProfileUnityModuleConfig
+    #>
+    [CmdletBinding()]
+    param()
+    
+    Write-Warning "Resetting ProfileUnity module configuration"
+    
+    # Clear connection state
+    $script:ModuleConfig.Session = $null
+    $script:ModuleConfig.BaseUrl = $null
+    $script:ModuleConfig.ServerName = $null
+    $script:ModuleConfig.Connected = $false
+    $script:ModuleConfig.ConnectedAt = $null
+    
+    # Clear current items
+    $script:ModuleConfig.CurrentItems = @{
+        Config = $null
+        Filter = $null
+        PortRule = $null
+        FlexApp = $null
+        ADMXTemplate = $null
+        CloudCredential = $null
+    }
+    
+    # Clear globals
+    $global:session = $null
+    $global:servername = $null
+    $global:CurrentConfig = $null
+    
+    Write-Host "Module configuration reset" -ForegroundColor Yellow
+}
+
 # Initialize the module when loaded
-Initialize-ProfileUnityModule
+try {
+    Initialize-ProfileUnityModule
+}
+catch {
+    Write-Warning "Failed to initialize module: $_"
+}
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Get-ProfileUnityModuleConfig',
     'Set-ProfileUnityModuleConfig',
     'Get-ProfileUnityDefaultPath',
-    'Set-ProfileUnityDefaultPath'
+    'Set-ProfileUnityDefaultPath',
+    'Reset-ProfileUnityModuleConfig'
 )
+#>

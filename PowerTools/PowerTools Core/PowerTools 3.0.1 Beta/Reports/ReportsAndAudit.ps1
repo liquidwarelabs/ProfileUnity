@@ -1,4 +1,4 @@
-# ReportsAndAudit.ps1 - ProfileUnity Reports and Audit Functions
+﻿# ReportsAndAudit.ps1 - ProfileUnity Reports and Audit Functions
 
 function Get-ProUAuditLog {
     <#
@@ -802,8 +802,10 @@ function Export-ProUHealthCheck {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Get-ProUAuditLog',
-    'Get-ProUReport',
     'Export-ProUHealthCheck'
 )
+#>
+

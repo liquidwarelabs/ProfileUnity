@@ -1,380 +1,179 @@
-# Core/AutoCompletion.ps1 - Auto-Completion and IntelliSense Helpers for ProfileUnity PowerTools
+# Core\AutoCompletion.ps1 - Auto-completion and IntelliSense Functions
+# Relative Path: \Core\AutoCompletion.ps1
 
 # =============================================================================
-# AUTO-COMPLETION REGISTRATION
-# =============================================================================
-
-# Configuration Name Completers
-Register-ArgumentCompleter -CommandName @(
-    'Edit-ProUConfig', 'Remove-ProUConfig', 'Copy-ProUConfig', 'Test-ProUConfig',
-    'Export-ProUConfig', 'Deploy-ProUConfiguration', 'Get-ProUConfigScript'
-) -ParameterName 'Name' -ScriptBlock {
-    param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
-    
-    try {
-        $configs = Get-ProUConfig -ErrorAction SilentlyContinue
-        $configs | Where-Object { $_.Name -like "$wordToComplete*" } | ForEach-Object {
-            [System.Management.Automation.CompletionResult]::new(
-                "'$($_.Name)'",
-                $_.Name,
-                'ParameterValue',
-                "Configuration: $($_.Description)"
-            )
-        }
-    }
-    catch {
-        # Return empty if can't retrieve configs
-    }
-}
-
-# Filter Name Completers
-Register-ArgumentCompleter -CommandName @(
-    'Edit-ProUFilter', 'Remove-ProUFilter', 'Copy-ProUFilter', 'Test-ProUFilter',
-    'Export-ProUFilter', 'Add-ProUFlexAppDia', 'Add-ProUAdmx'
-) -ParameterName @('Name', 'FilterName') -ScriptBlock {
-    param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
-    
-    try {
-        $filters = Get-ProUFilters -ErrorAction SilentlyContinue
-        $filters | Where-Object { $_.Name -like "$wordToComplete*" } | ForEach-Object {
-            [System.Management.Automation.CompletionResult]::new(
-                "'$($_.Name)'",
-                $_.Name,
-                'ParameterValue',
-                "Filter: $($_.Description)"
-            )
-        }
-    }
-    catch {
-        # Return empty if can't retrieve filters
-    }
-}
-
-# FlexApp Name Completers
-Register-ArgumentCompleter -CommandName @(
-    'Edit-ProUFlexapp', 'Remove-ProUFlexapp', 'Enable-ProUFlexapp', 'Disable-ProUFlexapp',
-    'Add-ProUFlexAppDia', 'Remove-ProUFlexAppDia', 'Enable-ProUFlexAppDia', 'Disable-ProUFlexAppDia'
-) -ParameterName @('Name', 'DIAName') -ScriptBlock {
-    param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
-    
-    try {
-        $flexApps = Get-ProUFlexapps -ErrorAction SilentlyContinue
-        $flexApps | Where-Object { $_.Name -like "$wordToComplete*" } | ForEach-Object {
-            [System.Management.Automation.CompletionResult]::new(
-                "'$($_.Name)'",
-                $_.Name,
-                'ParameterValue',
-                "FlexApp: $($_.Description)"
-            )
-        }
-    }
-    catch {
-        # Return empty if can't retrieve FlexApps
-    }
-}
-
-# Server Name Completers (for connection)
-Register-ArgumentCompleter -CommandName 'Connect-ProfileUnityServer' -ParameterName 'ServerName' -ScriptBlock {
-    param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
-    
-    # Get recent servers from registry or config
-    $recentServers = @()
-    try {
-        $configPath = Join-Path $env:APPDATA "ProfileUnity-PowerTools\RecentServers.json"
-        if (Test-Path $configPath) {
-            $recentConfig = Get-Content $configPath | ConvertFrom-Json
-            $recentServers = $recentConfig.Servers
-        }
-    }
-    catch {
-        # Use default common server names if config not available
-        $recentServers = @('localhost', 'profileunity-server', 'pu-prod', 'pu-dev', 'pu-test')
-    }
-    
-    $recentServers | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
-        [System.Management.Automation.CompletionResult]::new(
-            $_,
-            $_,
-            'ParameterValue',
-            "Recent server: $_"
-        )
-    }
-}
-
-# Path Completers for common operations
-Register-ArgumentCompleter -CommandName @(
-    'Export-ProUConfig', 'Import-ProUConfig', 'Backup-ProUEnvironment',
-    'Export-ProUHealthReport', 'Enable-ProUDetailedLogging'
-) -ParameterName @('Path', 'SavePath', 'OutputPath', 'LogPath', 'BackupPath') -ScriptBlock {
-    param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
-    
-    # Provide common paths based on parameter context
-    $commonPaths = @()
-    
-    switch -Wildcard ($parameterName) {
-        '*Export*' -or '*Output*' {
-            $commonPaths += [Environment]::GetFolderPath('MyDocuments')
-            $commonPaths += [Environment]::GetFolderPath('Desktop')
-            $commonPaths += Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'ProfileUnity-Exports'
-        }
-        '*Backup*' {
-            $commonPaths += Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'ProfileUnity-Backups'
-            $commonPaths += "C:\Backups"
-            $commonPaths += "\\server\backups"
-        }
-        '*Log*' {
-            $commonPaths += Join-Path $env:TEMP 'ProfileUnity-Logs'
-            $commonPaths += Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'ProfileUnity-PowerTools\Logs'
-        }
-    }
-    
-    # Add current directory and parent
-    $commonPaths += Get-Location
-    $commonPaths += Split-Path (Get-Location) -Parent
-    
-    $commonPaths | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
-        [System.Management.Automation.CompletionResult]::new(
-            "'$_'",
-            $_,
-            'ParameterValue',
-            "Path: $_"
-        )
-    }
-}
-
-# Template Name Completers
-Register-ArgumentCompleter -CommandName @(
-    'New-ProUConfig', 'New-ProUConfigurationTemplate', 'Deploy-ProUTemplate'
-) -ParameterName 'Template' -ScriptBlock {
-    param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
-    
-    try {
-        $templates = Get-ProUTemplate -ErrorAction SilentlyContinue
-        $templates | Where-Object { $_.Name -like "$wordToComplete*" } | ForEach-Object {
-            [System.Management.Automation.CompletionResult]::new(
-                "'$($_.Name)'",
-                $_.Name,
-                'ParameterValue',
-                "Template: $($_.Description)"
-            )
-        }
-    }
-    catch {
-        # Provide built-in template names
-        $builtInTemplates = @('RemoteAccess', 'KioskMode', 'DeveloperWorkstation', 'ExecutiveDesktop', 'SharedComputer')
-        $builtInTemplates | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
-            [System.Management.Automation.CompletionResult]::new(
-                $_,
-                $_,
-                'ParameterValue',
-                "Built-in template: $_"
-            )
-        }
-    }
-}
-
-# Help Topic Completers
-Register-ArgumentCompleter -CommandName 'Get-ProUHelp' -ParameterName 'Topic' -ScriptBlock {
-    param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameters)
-    
-    $helpTopics = @(
-        'Getting Started', 'Configurations', 'FlexApp', 'ADMX', 'Filters', 
-        'Troubleshooting', 'Deployment', 'Security', 'Performance', 'Integration'
-    )
-    
-    $helpTopics | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
-        [System.Management.Automation.CompletionResult]::new(
-            "'$_'",
-            $_,
-            'ParameterValue',
-            "Help topic: $_"
-        )
-    }
-}
-
-# =============================================================================
-# INTELLISENSE HELPERS
+# AUTO-COMPLETION AND INTELLISENSE FUNCTIONS
 # =============================================================================
 
 function Get-ProUIntelliSenseData {
     <#
     .SYNOPSIS
-        Retrieves IntelliSense data for ProfileUnity objects.
+        Provides IntelliSense data for ProfileUnity PowerTools commands.
     
-    .PARAMETER ObjectType
-        Type of object to get IntelliSense data for
+    .DESCRIPTION
+        Returns contextual help and suggestions for ProfileUnity commands.
     
-    .PARAMETER Refresh
-        Force refresh of cached data
+    .PARAMETER CommandName
+        The command to provide IntelliSense for
+    
+    .PARAMETER ParameterName
+        The parameter to provide suggestions for
     
     .EXAMPLE
-        Get-ProUIntelliSenseData -ObjectType Configuration
+        Get-ProUIntelliSenseData -CommandName "Edit-ProUConfig"
     #>
     [CmdletBinding()]
     param(
-        [ValidateSet('Configuration', 'Filter', 'FlexApp', 'Template', 'Server')]
-        [string]$ObjectType,
-        
-        [switch]$Refresh
+        [string]$CommandName,
+        [string]$ParameterName
     )
     
-    # Use cached data unless refresh requested
-    $cacheKey = "IntelliSense_$ObjectType"
-    if (-not $Refresh -and $script:ModuleConfig.IntelliSenseCache -and $script:ModuleConfig.IntelliSenseCache[$cacheKey]) {
-        $cacheData = $script:ModuleConfig.IntelliSenseCache[$cacheKey]
-        $cacheAge = (Get-Date) - $cacheData.Timestamp
-        if ($cacheAge.TotalMinutes -lt 5) {  # 5-minute cache
-            return $cacheData.Data
+    $intelliSenseData = @{}
+    
+    # Configuration commands
+    if ($CommandName -like "*Config*") {
+        $intelliSenseData.Configurations = try {
+            Get-ProUConfig | Select-Object -ExpandProperty name
+        } catch {
+            @()
+        }
+        
+        $intelliSenseData.Suggestions = @(
+            "Use Get-ProUConfig to list all configurations",
+            "Use Edit-ProUConfig -Name '<ConfigName>' to load for editing",
+            "Use Save-ProUConfig to save changes"
+        )
+    }
+    
+    # Filter commands
+    if ($CommandName -like "*Filter*") {
+        $intelliSenseData.Filters = try {
+            Get-ProUFilters | Select-Object -ExpandProperty name
+        } catch {
+            @()
+        }
+        
+        $intelliSenseData.Suggestions = @(
+            "Use Get-ProUFilters to list all filters",
+            "Use Edit-ProUFilter -Name '<FilterName>' to load for editing"
+        )
+    }
+    
+    # Command-specific suggestions
+    switch -Wildcard ($CommandName) {
+        '*Get*' {
+            $intelliSenseData.Suggestions += @(
+                "Get commands retrieve data from ProfileUnity server",
+                "No changes are made to server data"
+            )
+        }
+        
+        '*Edit*' {
+            $intelliSenseData.Suggestions += @(
+                "Edit commands load items into memory for modification",
+                "Remember to use Save command to persist changes"
+            )
+        }
+        
+        '*Save*' {
+            $intelliSenseData.Suggestions += @(
+                "Save commands persist changes to ProfileUnity server",
+                "Use -Force to skip confirmation prompts"
+            )
+        }
+        
+        '*Export*' {
+            $intelliSenseData.Suggestions += @(
+                "Export commands save ProfileUnity items to JSON files",
+                "Specify -SavePath parameter for output directory"
+            )
+        }
+        
+        '*Import*' {
+            $intelliSenseData.Suggestions += @(
+                "Import commands load ProfileUnity items from JSON files",
+                "Use -JsonFile parameter to specify source file"
+            )
+        }
+        
+        '*Remove*' {
+            $intelliSenseData.Suggestions += @(
+                "Remove commands delete items from ProfileUnity server",
+                "This action cannot be undone - use with caution"
+            )
         }
     }
     
-    # Retrieve fresh data
-    $data = switch ($ObjectType) {
-        'Configuration' {
-            try {
-                Get-ProUConfig | Select-Object Name, Description, LastModified, ModifiedBy
-            }
-            catch { @() }
-        }
-        'Filter' {
-            try {
-                Get-ProUFilters | Select-Object Name, Description, Type, Criteria
-            }
-            catch { @() }
-        }
-        'FlexApp' {
-            try {
-                Get-ProUFlexapps | Select-Object Name, Description, Version, Size
-            }
-            catch { @() }
-        }
-        'Template' {
-            try {
-                Get-ProUTemplate | Select-Object Name, Description, Category, Components
-            }
-            catch { @() }
-        }
-        'Server' {
-            try {
-                @{
-                    ServerInfo = Get-ProUServerAbout
-                    Settings = Get-ProUServerSettings
-                    Status = Test-ProfileUnityConnection
-                }
-            }
-            catch { @{} }
-        }
-    }
-    
-    # Cache the data
-    if (-not $script:ModuleConfig.IntelliSenseCache) {
-        $script:ModuleConfig.IntelliSenseCache = @{}
-    }
-    
-    $script:ModuleConfig.IntelliSenseCache[$cacheKey] = @{
-        Data = $data
-        Timestamp = Get-Date
-    }
-    
-    return $data
+    return $intelliSenseData
 }
 
 function Show-ProUObjectPreview {
     <#
     .SYNOPSIS
-        Shows a quick preview of a ProfileUnity object.
+        Shows a preview of ProfileUnity objects for IntelliSense.
+    
+    .DESCRIPTION
+        Displays preview information about ProfileUnity configurations, filters, etc.
     
     .PARAMETER ObjectType
         Type of object to preview
     
     .PARAMETER Name
-        Name of the object to preview
+        Name of the specific object
     
     .EXAMPLE
-        Show-ProUObjectPreview -ObjectType Configuration -Name "Production"
+        Show-ProUObjectPreview -ObjectType "Configuration" -Name "Test Config"
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)]
-        [ValidateSet('Configuration', 'Filter', 'FlexApp')]
+        [ValidateSet('Configuration', 'Filter', 'FlexApp', 'PortRule')]
         [string]$ObjectType,
         
-        [Parameter(Mandatory)]
         [string]$Name
     )
     
     try {
-        $object = switch ($ObjectType) {
-            'Configuration' { Get-ProUConfig | Where-Object { $_.Name -eq $Name } }
-            'Filter' { Get-ProUFilters | Where-Object { $_.Name -eq $Name } }
-            'FlexApp' { Get-ProUFlexapps | Where-Object { $_.Name -eq $Name } }
-        }
-        
-        if (-not $object) {
-            Write-Host "Object '$Name' not found" -ForegroundColor Red
-            return
-        }
-        
-        Write-Host "`n=== $ObjectType: $Name ===" -ForegroundColor Cyan
+        Write-Host "=== ${ObjectType}: ${Name} ===" -ForegroundColor Cyan
         
         switch ($ObjectType) {
             'Configuration' {
-                Write-Host "Description: $($object.Description)" -ForegroundColor White
-                Write-Host "Last Modified: $($object.LastModified)" -ForegroundColor Gray
-                Write-Host "Modified By: $($object.ModifiedBy)" -ForegroundColor Gray
-                
-                # Show module counts
-                if ($object.Modules) {
-                    Write-Host "Modules:" -ForegroundColor Yellow
-                    $object.Modules | ForEach-Object {
-                        Write-Host "  $($_.Type): $($_.Count)" -ForegroundColor White
-                    }
+                $config = Get-ProUConfig -Name $Name
+                if ($config) {
+                    Write-Host "ID: $($config.id)" -ForegroundColor Gray
+                    Write-Host "Enabled: $(-not $config.disabled)" -ForegroundColor $(if($config.disabled){'Red'}else{'Green'})
+                    Write-Host "Description: $($config.description)" -ForegroundColor Gray
                 }
             }
+            
             'Filter' {
-                Write-Host "Description: $($object.Description)" -ForegroundColor White
-                Write-Host "Type: $($object.Type)" -ForegroundColor Gray
-                if ($object.Criteria) {
-                    Write-Host "Criteria: $($object.Criteria.Count) rules" -ForegroundColor Gray
+                $filter = Get-ProUFilters -Name $Name
+                if ($filter) {
+                    Write-Host "ID: $($filter.id)" -ForegroundColor Gray
+                    Write-Host "Type: $($filter.filterType)" -ForegroundColor Gray
+                    Write-Host "Description: $($filter.description)" -ForegroundColor Gray
                 }
             }
-            'FlexApp' {
-                Write-Host "Description: $($object.Description)" -ForegroundColor White
-                Write-Host "Version: $($object.Version)" -ForegroundColor Gray
-                Write-Host "Size: $($object.Size)" -ForegroundColor Gray
-                Write-Host "Status: $($object.Status)" -ForegroundColor Gray
-            }
-        }
-        
-        Write-Host "`nCommon Actions:" -ForegroundColor Yellow
-        switch ($ObjectType) {
-            'Configuration' {
-                Write-Host "  Edit-ProUConfig -Name '$Name'" -ForegroundColor Cyan
-                Write-Host "  Deploy-ProUConfiguration -Name '$Name'" -ForegroundColor Cyan
-                Write-Host "  Test-ProUConfig -Name '$Name'" -ForegroundColor Cyan
-            }
-            'Filter' {
-                Write-Host "  Edit-ProUFilter -Name '$Name'" -ForegroundColor Cyan
-                Write-Host "  Copy-ProUFilter -Name '$Name'" -ForegroundColor Cyan
-            }
-            'FlexApp' {
-                Write-Host "  Add-ProUFlexAppDia -DIAName '$Name'" -ForegroundColor Cyan
-                Write-Host "  Edit-ProUFlexapp -Name '$Name'" -ForegroundColor Cyan
+            
+            default {
+                Write-Host "Preview not available for $ObjectType" -ForegroundColor Yellow
             }
         }
     }
     catch {
-        Write-Host "Error retrieving object preview: $_" -ForegroundColor Red
+        Write-Host "Could not load preview for $ObjectType '$Name'" -ForegroundColor Red
     }
 }
 
 function Get-ProUSmartSuggestions {
     <#
     .SYNOPSIS
-        Provides smart suggestions based on command context and history.
+        Provides smart suggestions based on current context.
+    
+    .DESCRIPTION
+        Analyzes current ProfileUnity context and suggests next actions.
     
     .PARAMETER LastCommand
-        The last command executed (for context)
+        The last command executed
     
     .PARAMETER CurrentContext
         Current working context
@@ -398,7 +197,7 @@ function Get-ProUSmartSuggestions {
             Priority = 1
         }
         $suggestions += @{
-            Command = "Deploy-ProUConfiguration -Name '<ConfigName>'"
+            Command = "Update-ProUConfig -Name '<ConfigName>'"
             Description = "Deploy a configuration"
             Priority = 2
         }
@@ -411,23 +210,17 @@ function Get-ProUSmartSuggestions {
             Priority = 1
         }
         $suggestions += @{
-            Command = "Test-ProUConfig"
-            Description = "Validate the configuration"
-            Priority = 2
-        }
-        $suggestions += @{
             Command = "Show-ProUConfigurationSummary"
             Description = "View current configuration summary"
-            Priority = 3
+            Priority = 2
         }
     }
     
-    # Check current loaded configuration
-    $currentConfig = $script:ModuleConfig.CurrentItems.Config
-    if ($currentConfig) {
+    # Check current loaded items
+    if ($script:ModuleConfig -and $script:ModuleConfig.CurrentItems -and $script:ModuleConfig.CurrentItems.Config) {
         $suggestions += @{
             Command = "Save-ProUConfig"
-            Description = "Save changes to '$($currentConfig.Name)'"
+            Description = "Save changes to current configuration"
             Priority = 1
         }
     }
@@ -450,91 +243,119 @@ function Enable-ProUAutoComplete {
     .SYNOPSIS
         Enables enhanced auto-completion features for ProfileUnity PowerTools.
     
+    .DESCRIPTION
+        Sets up tab completion and IntelliSense for ProfileUnity commands.
+    
     .PARAMETER Features
-        Specific features to enable
+        Array of features to enable
     
     .EXAMPLE
-        Enable-ProUAutoComplete -Features @('ObjectNames', 'Paths', 'SmartSuggestions')
+        Enable-ProUAutoComplete -Features @('ObjectNames', 'Paths')
     #>
     [CmdletBinding()]
     param(
-        [string[]]$Features = @('ObjectNames', 'Paths', 'SmartSuggestions', 'History')
+        [ValidateSet('ObjectNames', 'Paths', 'Parameters', 'All')]
+        [string[]]$Features = @('ObjectNames')
     )
     
-    Write-Host "Enabling ProfileUnity auto-completion features..." -ForegroundColor Cyan
-    
-    foreach ($feature in $Features) {
-        switch ($feature) {
-            'ObjectNames' {
-                Write-Host "  ✓ Object name completion" -ForegroundColor Green
-                # Already registered above
-            }
-            'Paths' {
-                Write-Host "  ✓ Path completion" -ForegroundColor Green
-                # Already registered above
-            }
-            'SmartSuggestions' {
-                Write-Host "  ✓ Smart command suggestions" -ForegroundColor Green
-                $script:ModuleConfig.SmartSuggestions = $true
-            }
-            'History' {
-                Write-Host "  ✓ Command history integration" -ForegroundColor Green
-                $script:ModuleConfig.HistoryIntegration = $true
+    try {
+        if ($Features -contains 'All') {
+            $Features = @('ObjectNames', 'Paths', 'Parameters')
+        }
+        
+        foreach ($feature in $Features) {
+            switch ($feature) {
+                'ObjectNames' {
+                    Write-Verbose "Enabling object name completion"
+                    # Tab completion for configuration names
+                    Register-ArgumentCompleter -CommandName Edit-ProUConfig -ParameterName Name -ScriptBlock {
+                        param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameter)
+                        try {
+                            Get-ProUConfig | Where-Object { $_.name -like "*$wordToComplete*" } | 
+                                ForEach-Object { "'$($_.name)'" }
+                        } catch {
+                            @()
+                        }
+                    }
+                    
+                    # Tab completion for filter names
+                    Register-ArgumentCompleter -CommandName Edit-ProUFilter -ParameterName Name -ScriptBlock {
+                        param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameter)
+                        try {
+                            Get-ProUFilters | Where-Object { $_.name -like "*$wordToComplete*" } | 
+                                ForEach-Object { "'$($_.name)'" }
+                        } catch {
+                            @()
+                        }
+                    }
+                }
+                
+                'Paths' {
+                    Write-Verbose "Enabling path completion"
+                    # Path completion for export/import functions
+                    $pathCommands = @('Export-ProUConfig', 'Export-ProUConfigAll', 'Import-ProUConfig', 'Import-ProUConfigAll')
+                    foreach ($cmd in $pathCommands) {
+                        Register-ArgumentCompleter -CommandName $cmd -ParameterName SavePath -ScriptBlock {
+                            param($commandName, $parameterName, $wordToComplete, $commandAst, $fakeBoundParameter)
+                            $paths = Get-ChildItem -Path "$wordToComplete*" -Directory -ErrorAction SilentlyContinue
+                            $paths | ForEach-Object { "'$($_.FullName)'" }
+                        }
+                    }
+                }
+                
+                'Parameters' {
+                    Write-Verbose "Enabling parameter completion"
+                    # Additional parameter completions can be added here
+                }
             }
         }
+        
+        Write-Host "Auto-completion features enabled: $($Features -join ', ')" -ForegroundColor Green
     }
-    
-    # Set up PSReadLine integration if available
-    if (Get-Module -Name PSReadLine -ListAvailable) {
-        try {
-            Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
-            Set-PSReadLineOption -PredictionSource History
-            Write-Host "  ✓ PSReadLine integration enabled" -ForegroundColor Green
-        }
-        catch {
-            Write-Host "  ⚠ PSReadLine integration failed: $_" -ForegroundColor Yellow
-        }
+    catch {
+        Write-Warning "Failed to enable auto-completion: $_"
     }
-    
-    Write-Host "`nAuto-completion features enabled! Start typing ProfileUnity commands and press Tab for suggestions." -ForegroundColor Yellow
 }
 
 function Update-ProUAutoCompleteCache {
     <#
     .SYNOPSIS
-        Updates the auto-completion cache with fresh data.
+        Updates the auto-completion cache with current ProfileUnity data.
     
-    .PARAMETER Force
-        Force update even if cache is recent
+    .DESCRIPTION
+        Refreshes cached data used for auto-completion to ensure current information.
     
     .EXAMPLE
-        Update-ProUAutoCompleteCache -Force
+        Update-ProUAutoCompleteCache
     #>
     [CmdletBinding()]
-    param(
-        [switch]$Force
-    )
+    param()
     
-    Write-Host "Updating auto-completion cache..." -ForegroundColor Cyan
-    
-    $objectTypes = @('Configuration', 'Filter', 'FlexApp', 'Template', 'Server')
-    
-    foreach ($type in $objectTypes) {
-        try {
-            $data = Get-ProUIntelliSenseData -ObjectType $type -Refresh:$Force
-            Write-Host "  ✓ $type data cached ($($data.Count) items)" -ForegroundColor Green
+    try {
+        Write-Host "Updating auto-completion cache..." -ForegroundColor Yellow
+        
+        # Cache configuration names
+        $script:CachedConfigurations = try {
+            Get-ProUConfig | Select-Object -ExpandProperty name
+        } catch {
+            @()
         }
-        catch {
-            Write-Host "  ✗ Failed to cache $type data: $_" -ForegroundColor Red
+        
+        # Cache filter names
+        $script:CachedFilters = try {
+            Get-ProUFilters | Select-Object -ExpandProperty name
+        } catch {
+            @()
         }
+        
+        Write-Host "Auto-completion cache updated" -ForegroundColor Green
+        Write-Host "  Configurations: $($script:CachedConfigurations.Count)" -ForegroundColor Gray
+        Write-Host "  Filters: $($script:CachedFilters.Count)" -ForegroundColor Gray
     }
-    
-    Write-Host "Auto-completion cache updated!" -ForegroundColor Green
+    catch {
+        Write-Warning "Failed to update auto-completion cache: $_"
+    }
 }
-
-# =============================================================================
-# SAVE RECENT SERVERS FOR COMPLETION
-# =============================================================================
 
 function Save-ProURecentServer {
     <#
@@ -590,10 +411,16 @@ function Save-ProURecentServer {
 
 # Initialize auto-completion when module loads
 if ($PSVersionTable.PSVersion.Major -ge 5) {
-    Enable-ProUAutoComplete -Features @('ObjectNames', 'Paths') -ErrorAction SilentlyContinue
+    try {
+        Enable-ProUAutoComplete -Features @('ObjectNames', 'Paths') -ErrorAction SilentlyContinue
+    }
+    catch {
+        Write-Verbose "Auto-completion initialization failed: $_"
+    }
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Get-ProUIntelliSenseData',
     'Show-ProUObjectPreview',
@@ -602,3 +429,4 @@ Export-ModuleMember -Function @(
     'Update-ProUAutoCompleteCache',
     'Save-ProURecentServer'
 )
+#>

@@ -1,4 +1,5 @@
-# Configuration/VersionControl.ps1 - Rollback and Version Control System
+# Configuration\VersionControl.ps1 - Version Control and Rollback System
+# Relative Path: \Configuration\VersionControl.ps1
 
 # =============================================================================
 # VERSION CONTROL AND ROLLBACK SYSTEM
@@ -25,7 +26,7 @@ function Backup-ProUConfigurationState {
         Number of days to retain backups (default: 30)
     
     .EXAMPLE
-        Backup-ProUConfigurationState -ConfigurationName "Production" -BackupType "PreDeployment" -Comment "Before adding new FlexApp"
+        Backup-ProUConfigurationState -ConfigurationName "Production" -BackupType "PreDeployment"
         
     .EXAMPLE
         Backup-ProUConfigurationState -BackupType "Manual" -Comment "Weekly backup"
@@ -42,864 +43,557 @@ function Backup-ProUConfigurationState {
         [int]$RetentionDays = 30
     )
     
-    Write-Host "🔄 Creating configuration state backup..." -ForegroundColor Cyan
-    
-    # Get configurations to backup
-    $configurations = if ($ConfigurationName) {
-        Get-ProUConfig | Where-Object { $_.Name -eq $ConfigurationName }
-    } else {
-        Get-ProUConfig
-    }
-    
-    if (-not $configurations) {
-        Write-Host "No configurations found to backup" -ForegroundColor Red
-        return
-    }
-    
-    # Create backup directory structure
-    $backupRoot = Join-Path $script:DefaultPaths.Backup "ConfigurationVersions"
-    $timestampFolder = "Backup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
-    $backupPath = Join-Path $backupRoot $timestampFolder
-    
-    if (-not (Test-Path $backupPath)) {
-        New-Item -ItemType Directory -Path $backupPath -Force | Out-Null
-    }
-    
-    $backupResults = @()
-    
-    foreach ($config in $configurations) {
-        try {
-            Write-Host "  Backing up: $($config.Name)" -ForegroundColor Yellow
-            
-            # Create individual config backup
-            $configBackupPath = Join-Path $backupPath "$($config.Name).json"
-            
-            # Get full configuration data
-            $fullConfig = Get-ProUConfig -Name $config.Name
-            
-            # Create backup metadata
-            $backupMetadata = @{
-                BackupInfo = @{
-                    Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-                    BackupType = $BackupType
-                    Comment = $Comment
-                    User = $env:USERNAME
-                    Server = $script:ModuleConfig.ServerName
-                    Version = $script:ModuleConfig.ModuleVersion
-                }
-                ConfigurationData = $fullConfig
-                Dependencies = @{
-                    Filters = @()
-                    FlexApps = @()
-                    Templates = @()
-                }
-            }
-            
-            # Capture dependencies
-            if ($fullConfig.FlexAppDias) {
-                foreach ($dia in $fullConfig.FlexAppDias) {
-                    if ($dia.FilterId) {
-                        try {
-                            $filter = Get-ProUFilters | Where-Object { $_.ID -eq $dia.FilterId }
-                            if ($filter) {
-                                $backupMetadata.Dependencies.Filters += $filter
-                            }
-                        }
-                        catch {
-                            Write-Verbose "Could not backup filter dependency: $($dia.FilterId)"
-                        }
-                    }
-                    
-                    if ($dia.FlexAppPackages) {
-                        foreach ($package in $dia.FlexAppPackages) {
-                            try {
-                                $flexApp = Get-ProUFlexapps | Where-Object { $_.ID -eq $package.FlexAppPackageId }
-                                if ($flexApp) {
-                                    $backupMetadata.Dependencies.FlexApps += $flexApp
-                                }
-                            }
-                            catch {
-                                Write-Verbose "Could not backup FlexApp dependency: $($package.FlexAppPackageId)"
-                            }
-                        }
-                    }
-                }
-            }
-            
-            # Save backup
-            $backupMetadata | ConvertTo-Json -Depth 20 | Out-File -FilePath $configBackupPath -Encoding UTF8
-            
-            # Create version history entry
-            $versionEntry = @{
-                ConfigurationName = $config.Name
-                BackupPath = $configBackupPath
-                Timestamp = Get-Date
-                BackupType = $BackupType
-                Comment = $Comment
-                User = $env:USERNAME
-                Size = (Get-Item $configBackupPath).Length
-                Hash = Get-FileHash $configBackupPath -Algorithm SHA256 | Select-Object -ExpandProperty Hash
-            }
-            
-            $backupResults += $versionEntry
-            
-            Write-Host "    ✅ Backup created: $configBackupPath" -ForegroundColor Green
-        }
-        catch {
-            Write-Host "    ❌ Failed to backup $($config.Name): $_" -ForegroundColor Red
-            continue
-        }
-    }
-    
-    # Update version history
-    Update-ProUVersionHistory -Entries $backupResults
-    
-    # Clean up old backups
-    if ($RetentionDays -gt 0) {
-        Remove-ProUOldBackups -RetentionDays $RetentionDays
-    }
-    
-    Write-Host "📁 Backup completed: $backupPath" -ForegroundColor Green
-    Write-Host "Backed up $($backupResults.Count) configurations" -ForegroundColor Gray
-    
-    return @{
-        BackupPath = $backupPath
-        BackupResults = $backupResults
-        Timestamp = Get-Date
-    }
-}
-
-function Get-ProUConfigurationHistory {
-    <#
-    .SYNOPSIS
-        Gets version history for ProfileUnity configurations.
-    
-    .DESCRIPTION
-        Retrieves backup and version history with filtering and sorting options.
-    
-    .PARAMETER ConfigurationName
-        Specific configuration to get history for
-    
-    .PARAMETER Days
-        Number of days of history to retrieve
-    
-    .PARAMETER BackupType
-        Filter by backup type
-    
-    .PARAMETER Detailed
-        Include detailed backup information
-    
-    .EXAMPLE
-        Get-ProUConfigurationHistory -ConfigurationName "Production" -Days 30
-        
-    .EXAMPLE
-        Get-ProUConfigurationHistory -BackupType "PreDeployment" -Detailed
-    #>
-    [CmdletBinding()]
-    param(
-        [string]$ConfigurationName,
-        
-        [int]$Days = 30,
-        
-        [ValidateSet('All', 'Automatic', 'Manual', 'PreDeployment', 'PreEdit', 'Scheduled')]
-        [string]$BackupType = 'All',
-        
-        [switch]$Detailed
-    )
-    
-    $historyPath = Join-Path $script:DefaultPaths.Backup "VersionHistory.json"
-    
-    if (-not (Test-Path $historyPath)) {
-        Write-Host "No version history found" -ForegroundColor Yellow
-        return @()
-    }
-    
     try {
-        $history = Get-Content $historyPath | ConvertFrom-Json
+        Write-Host "Creating configuration state backup..." -ForegroundColor Cyan
+        
+        # Get configurations to backup
+        $configurations = if ($ConfigurationName) {
+            Get-ProUConfig | Where-Object { $_.Name -eq $ConfigurationName }
+        } else {
+            Get-ProUConfig
+        }
+        
+        if (-not $configurations) {
+            Write-Host "No configurations found to backup" -ForegroundColor Red
+            return
+        }
+        
+        # Create backup directory structure
+        $backupRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'ProfileUnity-Backups\ConfigurationVersions'
+        $timestampFolder = "Backup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+        $backupPath = Join-Path $backupRoot $timestampFolder
+        
+        if (-not (Test-Path $backupPath)) {
+            New-Item -ItemType Directory -Path $backupPath -Force | Out-Null
+        }
+        
+        $backupResults = @()
+        
+        foreach ($config in $configurations) {
+            try {
+                Write-Host "  Backing up: $($config.Name)" -ForegroundColor Yellow
+                
+                # Create individual config backup
+                $configBackupPath = Join-Path $backupPath "$($config.Name).json"
+                $response = Invoke-ProfileUnityApi -Endpoint "configuration/$($config.id)/download?encoding=default" -OutFile $configBackupPath
+                
+                $backupResults += @{
+                    Name = $config.Name
+                    BackupPath = $configBackupPath
+                    BackupTime = Get-Date
+                    Success = $true
+                }
+                
+                Write-Host "    Backup created: $configBackupPath" -ForegroundColor Green
+            }
+            catch {
+                Write-Warning "Failed to backup configuration '$($config.Name)': $_"
+                $backupResults += @{
+                    Name = $config.Name
+                    BackupPath = $null
+                    BackupTime = Get-Date
+                    Success = $false
+                    Error = $_.Exception.Message
+                }
+            }
+        }
+        
+        # Create backup metadata
+        $metadata = @{
+            BackupId = [guid]::NewGuid().ToString()
+            BackupType = $BackupType
+            BackupTime = Get-Date
+            Comment = $Comment
+            Configurations = $backupResults
+            CreatedBy = $env:USERNAME
+            ComputerName = $env:COMPUTERNAME
+        }
+        
+        $metadataPath = Join-Path $backupPath "backup-metadata.json"
+        $metadata | ConvertTo-Json -Depth 5 | Out-File $metadataPath -Encoding UTF8
+        
+        Write-Host "Backup completed: $backupPath" -ForegroundColor Green
+        Write-Host "  Configurations backed up: $($backupResults.Where({$_.Success}).Count)" -ForegroundColor Green
+        Write-Host "  Backup ID: $($metadata.BackupId)" -ForegroundColor Gray
+        
+        # Clean up old backups
+        if ($RetentionDays -gt 0) {
+            $cutoffDate = (Get-Date).AddDays(-$RetentionDays)
+            $oldBackups = Get-ChildItem $backupRoot -Directory | Where-Object { $_.CreationTime -lt $cutoffDate }
+            
+            foreach ($oldBackup in $oldBackups) {
+                try {
+                    Remove-Item $oldBackup.FullName -Recurse -Force
+                    Write-Verbose "Removed old backup: $($oldBackup.Name)"
+                }
+                catch {
+                    Write-Verbose "Could not remove old backup '$($oldBackup.Name)': $_"
+                }
+            }
+        }
+        
+        return $metadata
     }
     catch {
-        Write-Host "Error reading version history: $_" -ForegroundColor Red
-        return @()
-    }
-    
-    # Filter history
-    $filteredHistory = $history | Where-Object {
-        $include = $true
-        
-        # Filter by configuration name
-        if ($ConfigurationName -and $_.ConfigurationName -ne $ConfigurationName) {
-            $include = $false
-        }
-        
-        # Filter by days
-        if ($Days -gt 0) {
-            $backupDate = [datetime]$_.Timestamp
-            if ((Get-Date) - $backupDate -gt [TimeSpan]::FromDays($Days)) {
-                $include = $false
-            }
-        }
-        
-        # Filter by backup type
-        if ($BackupType -ne 'All' -and $_.BackupType -ne $BackupType) {
-            $include = $false
-        }
-        
-        return $include
-    }
-    
-    # Sort by timestamp (newest first)
-    $sortedHistory = $filteredHistory | Sort-Object Timestamp -Descending
-    
-    if ($Detailed) {
-        return $sortedHistory
-    } else {
-        return $sortedHistory | Select-Object ConfigurationName, Timestamp, BackupType, Comment, User, @{
-            Name = "Age"
-            Expression = { 
-                $age = (Get-Date) - [datetime]$_.Timestamp
-                if ($age.Days -gt 0) { "$($age.Days)d $($age.Hours)h" }
-                else { "$($age.Hours)h $($age.Minutes)m" }
-            }
-        }
+        Write-Error "Failed to create configuration backup: $_"
+        throw
     }
 }
 
-function Restore-ProUConfigurationVersion {
+function Restore-ProUConfigurationState {
     <#
     .SYNOPSIS
-        Restores a configuration from a previous backup version.
+        Restores configurations from a backup.
     
     .DESCRIPTION
-        Restores configuration to a previous state with safety checks and confirmation.
-    
-    .PARAMETER ConfigurationName
-        Name of configuration to restore
-    
-    .PARAMETER BackupTimestamp
-        Timestamp of backup to restore from
+        Restores one or more configurations from a previously created backup.
     
     .PARAMETER BackupPath
-        Direct path to backup file
+        Path to the backup directory
     
-    .PARAMETER CreateBackupFirst
-        Create backup of current state before restoring
+    .PARAMETER ConfigurationName
+        Name of specific configuration to restore (all if not specified)
     
     .PARAMETER Force
         Skip confirmation prompts
     
     .EXAMPLE
-        Restore-ProUConfigurationVersion -ConfigurationName "Production" -BackupTimestamp "2024-01-15 14:30:45"
+        Restore-ProUConfigurationState -BackupPath "C:\Backups\Backup_20241201_143022"
         
     .EXAMPLE
-        Restore-ProUConfigurationVersion -BackupPath "C:\Backups\Production.json" -CreateBackupFirst
+        Restore-ProUConfigurationState -BackupPath "C:\Backups\Backup_20241201_143022" -ConfigurationName "Production"
     #>
-    [CmdletBinding(SupportsShouldProcess, DefaultParameterSetName = 'ByTimestamp')]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
-        [Parameter(Mandatory, ParameterSetName = 'ByTimestamp')]
-        [string]$ConfigurationName,
-        
-        [Parameter(Mandatory, ParameterSetName = 'ByTimestamp')]
-        [string]$BackupTimestamp,
-        
-        [Parameter(Mandatory, ParameterSetName = 'ByPath')]
+        [Parameter(Mandatory)]
         [string]$BackupPath,
         
-        [switch]$CreateBackupFirst,
+        [string]$ConfigurationName,
+        
         [switch]$Force
     )
     
-    Write-Host "🔄 Preparing to restore configuration..." -ForegroundColor Cyan
-    
-    # Find backup to restore
-    if ($PSCmdlet.ParameterSetName -eq 'ByTimestamp') {
-        $history = Get-ProUConfigurationHistory -ConfigurationName $ConfigurationName -Detailed
-        $backup = $history | Where-Object { 
-            $_.Timestamp -eq $BackupTimestamp -or 
-            ([datetime]$_.Timestamp).ToString('yyyy-MM-dd HH:mm:ss') -eq $BackupTimestamp
-        } | Select-Object -First 1
+    try {
+        if (-not (Test-Path $BackupPath)) {
+            throw "Backup path not found: $BackupPath"
+        }
         
-        if (-not $backup) {
-            Write-Host "Backup not found for timestamp: $BackupTimestamp" -ForegroundColor Red
+        # Read backup metadata
+        $metadataPath = Join-Path $BackupPath "backup-metadata.json"
+        if (-not (Test-Path $metadataPath)) {
+            throw "Backup metadata not found: $metadataPath"
+        }
+        
+        $metadata = Get-Content $metadataPath | ConvertFrom-Json
+        
+        Write-Host "Restoring from backup:" -ForegroundColor Cyan
+        Write-Host "  Backup ID: $($metadata.BackupId)" -ForegroundColor Gray
+        Write-Host "  Backup Time: $($metadata.BackupTime)" -ForegroundColor Gray
+        Write-Host "  Backup Type: $($metadata.BackupType)" -ForegroundColor Gray
+        Write-Host "  Comment: $($metadata.Comment)" -ForegroundColor Gray
+        
+        # Get configurations to restore
+        $configurationsToRestore = $metadata.Configurations | Where-Object { $_.Success }
+        
+        if ($ConfigurationName) {
+            $configurationsToRestore = $configurationsToRestore | Where-Object { $_.Name -eq $ConfigurationName }
+        }
+        
+        if (-not $configurationsToRestore) {
+            Write-Host "No configurations found to restore" -ForegroundColor Yellow
             return
         }
         
-        $BackupPath = $backup.BackupPath
-        $ConfigurationName = $backup.ConfigurationName
-    }
-    
-    if (-not (Test-Path $BackupPath)) {
-        Write-Host "Backup file not found: $BackupPath" -ForegroundColor Red
-        return
-    }
-    
-    try {
-        # Load backup data
-        $backupData = Get-Content $BackupPath | ConvertFrom-Json
-        $configData = $backupData.ConfigurationData
-        
-        Write-Host "📋 Backup Information:" -ForegroundColor Yellow
-        Write-Host "  Configuration: $ConfigurationName" -ForegroundColor White
-        Write-Host "  Backup Date: $($backupData.BackupInfo.Timestamp)" -ForegroundColor White
-        Write-Host "  Backup Type: $($backupData.BackupInfo.BackupType)" -ForegroundColor White
-        Write-Host "  Comment: $($backupData.BackupInfo.Comment)" -ForegroundColor White
-        Write-Host "  Created By: $($backupData.BackupInfo.User)" -ForegroundColor White
-        
-        # Safety checks
-        if (-not $Force) {
-            Write-Host "`n⚠️  WARNING: This will overwrite the current configuration!" -ForegroundColor Red
-            $confirm = Read-Host "Are you sure you want to proceed? (yes/no)"
-            if ($confirm -ne "yes") {
-                Write-Host "Restore cancelled" -ForegroundColor Yellow
-                return
-            }
+        Write-Host "Configurations to restore: $($configurationsToRestore.Count)" -ForegroundColor Yellow
+        $configurationsToRestore | ForEach-Object { 
+            Write-Host "  - $($_.Name)" -ForegroundColor White
         }
         
-        # Create backup of current state first
-        if ($CreateBackupFirst) {
-            Write-Host "📦 Creating backup of current state..." -ForegroundColor Yellow
-            Backup-ProUConfigurationState -ConfigurationName $ConfigurationName -BackupType "PreRestore" -Comment "Before restoring version from $($backupData.BackupInfo.Timestamp)"
+        if (-not $Force -and -not $PSCmdlet.ShouldProcess("$($configurationsToRestore.Count) configurations", "Restore from backup")) {
+            Write-Host "Restore cancelled" -ForegroundColor Yellow
+            return
         }
         
-        if ($PSCmdlet.ShouldProcess($ConfigurationName, "Restore Configuration")) {
-            # Restore the configuration
-            Write-Host "🔄 Restoring configuration..." -ForegroundColor Cyan
-            
-            # First, try to restore dependencies
-            if ($backupData.Dependencies) {
-                Write-Host "  Restoring dependencies..." -ForegroundColor Yellow
-                
-                # Restore filters if needed
-                if ($backupData.Dependencies.Filters) {
-                    foreach ($filter in $backupData.Dependencies.Filters) {
-                        try {
-                            $existing = Get-ProUFilters | Where-Object { $_.ID -eq $filter.ID }
-                            if (-not $existing) {
-                                Write-Host "    Creating missing filter: $($filter.Name)" -ForegroundColor Gray
-                                # Note: Would need Import-ProUFilter or similar function
-                            }
-                        }
-                        catch {
-                            Write-Warning "Could not restore filter dependency: $($filter.Name)"
-                        }
-                    }
-                }
-            }
-            
-            # Import the configuration
-            $tempConfigPath = Join-Path $env:TEMP "restore_$ConfigurationName.json"
-            $configData | ConvertTo-Json -Depth 20 | Out-File -FilePath $tempConfigPath -Encoding UTF8
-            
+        $restoreResults = @()
+        
+        foreach ($configBackup in $configurationsToRestore) {
             try {
-                # Remove existing configuration
-                Remove-ProUConfig -Name $ConfigurationName -Force -ErrorAction SilentlyContinue
+                Write-Host "Restoring: $($configBackup.Name)" -ForegroundColor Yellow
                 
-                # Import restored version
-                Import-ProUConfig -Path $tempConfigPath -Name $ConfigurationName
-                
-                Write-Host "✅ Configuration restored successfully!" -ForegroundColor Green
-                Write-Host "  Restored from: $($backupData.BackupInfo.Timestamp)" -ForegroundColor Gray
-                
-                # Log the restore operation
-                $logEntry = @{
-                    Timestamp = Get-Date
-                    Operation = "Restore"
-                    ConfigurationName = $ConfigurationName
-                    RestoredFrom = $BackupPath
-                    User = $env:USERNAME
-                    Success = $true
+                if (-not (Test-Path $configBackup.BackupPath)) {
+                    throw "Backup file not found: $($configBackup.BackupPath)"
                 }
-                Add-ProUOperationLog -Entry $logEntry
                 
+                # Read and import the configuration
+                $jsonContent = Get-Content $configBackup.BackupPath | ConvertFrom-Json
+                $configObject = $jsonContent.configurations
+                
+                # Import the configuration
+                Invoke-ProfileUnityApi -Endpoint 'configuration' -Method POST -Body $configObject
+                
+                $restoreResults += @{
+                    Name = $configBackup.Name
+                    Success = $true
+                    RestoreTime = Get-Date
+                }
+                
+                Write-Host "  Restored: $($configBackup.Name)" -ForegroundColor Green
             }
-            finally {
-                # Clean up temp file
-                if (Test-Path $tempConfigPath) {
-                    Remove-Item $tempConfigPath -Force -ErrorAction SilentlyContinue
+            catch {
+                Write-Warning "Failed to restore configuration '$($configBackup.Name)': $_"
+                $restoreResults += @{
+                    Name = $configBackup.Name
+                    Success = $false
+                    RestoreTime = Get-Date
+                    Error = $_.Exception.Message
                 }
             }
         }
+        
+        Write-Host "Restore completed" -ForegroundColor Green
+        Write-Host "  Configurations restored: $($restoreResults.Where({$_.Success}).Count)" -ForegroundColor Green
+        Write-Host "  Failed: $($restoreResults.Where({-not $_.Success}).Count)" -ForegroundColor $(if($restoreResults.Where({-not $_.Success}).Count -gt 0){'Red'}else{'Green'})
+        
+        return $restoreResults
     }
     catch {
-        Write-Host "❌ Restore failed: $_" -ForegroundColor Red
-        
-        # Log the failed operation
-        $logEntry = @{
-            Timestamp = Get-Date
-            Operation = "Restore"
-            ConfigurationName = $ConfigurationName
-            RestoredFrom = $BackupPath
-            User = $env:USERNAME
-            Success = $false
-            Error = $_.Exception.Message
-        }
-        Add-ProUOperationLog -Entry $logEntry
-        
+        Write-Error "Failed to restore configuration state: $_"
         throw
     }
 }
 
-function Compare-ProUConfigurationVersions {
+function Get-ProUConfigurationBackups {
     <#
     .SYNOPSIS
-        Compares two configuration versions to show differences.
+        Lists available configuration backups.
     
     .DESCRIPTION
-        Provides detailed comparison between current configuration and backup version or between two backups.
+        Shows all available configuration backups with metadata.
+    
+    .PARAMETER BackupType
+        Filter by backup type
     
     .PARAMETER ConfigurationName
-        Name of configuration to compare
+        Filter by configuration name
     
-    .PARAMETER BackupTimestamp1
-        First backup timestamp to compare
-    
-    .PARAMETER BackupTimestamp2
-        Second backup timestamp to compare (current version if not specified)
-    
-    .PARAMETER ShowDetails
-        Show detailed differences
-    
-    .PARAMETER OutputFormat
-        Output format for comparison
+    .PARAMETER Days
+        Show backups from the last N days
     
     .EXAMPLE
-        Compare-ProUConfigurationVersions -ConfigurationName "Production" -BackupTimestamp1 "2024-01-15 14:30:45"
+        Get-ProUConfigurationBackups
         
     .EXAMPLE
-        Compare-ProUConfigurationVersions -ConfigurationName "Production" -BackupTimestamp1 "2024-01-15 14:30:45" -BackupTimestamp2 "2024-01-16 09:15:22" -ShowDetails
+        Get-ProUConfigurationBackups -ConfigurationName "Production" -Days 7
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)]
+        [ValidateSet('Automatic', 'Manual', 'PreDeployment', 'PreEdit', 'Scheduled')]
+        [string]$BackupType,
+        
         [string]$ConfigurationName,
         
-        [Parameter(Mandatory)]
-        [string]$BackupTimestamp1,
-        
-        [string]$BackupTimestamp2,
-        
-        [switch]$ShowDetails,
-        
-        [ValidateSet('Console', 'HTML', 'JSON')]
-        [string]$OutputFormat = 'Console'
+        [int]$Days
     )
     
-    Write-Host "🔍 Comparing configuration versions..." -ForegroundColor Cyan
-    
-    # Get first version (backup)
-    $history = Get-ProUConfigurationHistory -ConfigurationName $ConfigurationName -Detailed
-    $backup1 = $history | Where-Object { 
-        $_.Timestamp -eq $BackupTimestamp1 -or 
-        ([datetime]$_.Timestamp).ToString('yyyy-MM-dd HH:mm:ss') -eq $BackupTimestamp1
-    } | Select-Object -First 1
-    
-    if (-not $backup1) {
-        Write-Host "Backup not found for timestamp: $BackupTimestamp1" -ForegroundColor Red
-        return
-    }
-    
-    $config1Data = (Get-Content $backup1.BackupPath | ConvertFrom-Json).ConfigurationData
-    $version1Label = "Backup: $BackupTimestamp1"
-    
-    # Get second version (backup or current)
-    $config2Data = $null
-    $version2Label = ""
-    
-    if ($BackupTimestamp2) {
-        $backup2 = $history | Where-Object { 
-            $_.Timestamp -eq $BackupTimestamp2 -or 
-            ([datetime]$_.Timestamp).ToString('yyyy-MM-dd HH:mm:ss') -eq $BackupTimestamp2
-        } | Select-Object -First 1
+    try {
+        $backupRoot = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'ProfileUnity-Backups\ConfigurationVersions'
         
-        if (-not $backup2) {
-            Write-Host "Backup not found for timestamp: $BackupTimestamp2" -ForegroundColor Red
-            return
+        if (-not (Test-Path $backupRoot)) {
+            Write-Host "No backup directory found: $backupRoot" -ForegroundColor Yellow
+            return @()
         }
         
-        $config2Data = (Get-Content $backup2.BackupPath | ConvertFrom-Json).ConfigurationData
-        $version2Label = "Backup: $BackupTimestamp2"
-    } else {
-        $config2Data = Get-ProUConfig -Name $ConfigurationName
-        $version2Label = "Current Version"
-    }
-    
-    # Compare configurations
-    $differences = @()
-    
-    # Compare basic properties
-    $basicProps = @('Name', 'Description', 'LastModified', 'ModifiedBy')
-    foreach ($prop in $basicProps) {
-        $val1 = $config1Data.$prop
-        $val2 = $config2Data.$prop
+        $backupFolders = Get-ChildItem $backupRoot -Directory | Sort-Object CreationTime -Descending
         
-        if ($val1 -ne $val2) {
-            $differences += @{
-                Category = "Basic Properties"
-                Property = $prop
-                OldValue = $val1
-                NewValue = $val2
-                ChangeType = if ($val1 -and $val2) { "Modified" } elseif ($val2) { "Added" } else { "Removed" }
-            }
-        }
-    }
-    
-    # Compare FlexApp DIAs
-    $differences += Compare-ProUConfigurationArray -Array1 $config1Data.FlexAppDias -Array2 $config2Data.FlexAppDias -Category "FlexApp DIAs" -KeyProperty "FlexAppPackages"
-    
-    # Compare ADMX Templates
-    $differences += Compare-ProUConfigurationArray -Array1 $config1Data.AdministrativeTemplates -Array2 $config2Data.AdministrativeTemplates -Category "ADMX Templates" -KeyProperty "AdmxFile"
-    
-    # Compare Portability Rules
-    $differences += Compare-ProUConfigurationArray -Array1 $config1Data.PortabilityRules -Array2 $config2Data.PortabilityRules -Category "Portability Rules" -KeyProperty "Path"
-    
-    # Output results
-    switch ($OutputFormat) {
-        'Console' { Show-ProUConfigurationComparisonConsole -Differences $differences -Version1Label $version1Label -Version2Label $version2Label -ShowDetails:$ShowDetails }
-        'HTML' { Export-ProUConfigurationComparisonHTML -Differences $differences -Version1Label $version1Label -Version2Label $version2Label }
-        'JSON' { $differences | ConvertTo-Json -Depth 10 }
-    }
-    
-    return $differences
-}
-
-function Compare-ProUConfigurationArray {
-    <#
-    .SYNOPSIS
-        Helper function to compare arrays in configurations.
-    
-    .PARAMETER Array1
-        First array to compare
-    
-    .PARAMETER Array2
-        Second array to compare
-    
-    .PARAMETER Category
-        Category name for differences
-    
-    .PARAMETER KeyProperty
-        Property to use as key for comparison
-    #>
-    [CmdletBinding()]
-    param(
-        [array]$Array1,
-        [array]$Array2,
-        [string]$Category,
-        [string]$KeyProperty
-    )
-    
-    $differences = @()
-    
-    # Ensure arrays are not null
-    if (-not $Array1) { $Array1 = @() }
-    if (-not $Array2) { $Array2 = @() }
-    
-    # Find items in Array1 but not in Array2 (removed)
-    foreach ($item1 in $Array1) {
-        $key1 = if ($KeyProperty -eq "FlexAppPackages") {
-            $item1.FlexAppPackages[0].FlexAppPackageId
-        } else {
-            $item1.$KeyProperty
+        if ($Days) {
+            $cutoffDate = (Get-Date).AddDays(-$Days)
+            $backupFolders = $backupFolders | Where-Object { $_.CreationTime -ge $cutoffDate }
         }
         
-        $found = $false
-        foreach ($item2 in $Array2) {
-            $key2 = if ($KeyProperty -eq "FlexAppPackages") {
-                $item2.FlexAppPackages[0].FlexAppPackageId
-            } else {
-                $item2.$KeyProperty
-            }
+        $backups = @()
+        
+        foreach ($folder in $backupFolders) {
+            $metadataPath = Join-Path $folder.FullName "backup-metadata.json"
             
-            if ($key1 -eq $key2) {
-                $found = $true
-                break
-            }
-        }
-        
-        if (-not $found) {
-            $differences += @{
-                Category = $Category
-                Property = $key1
-                OldValue = "Present"
-                NewValue = $null
-                ChangeType = "Removed"
-                Details = $item1
-            }
-        }
-    }
-    
-    # Find items in Array2 but not in Array1 (added) or modified
-    foreach ($item2 in $Array2) {
-        $key2 = if ($KeyProperty -eq "FlexAppPackages") {
-            $item2.FlexAppPackages[0].FlexAppPackageId
-        } else {
-            $item2.$KeyProperty
-        }
-        
-        $matchingItem1 = $null
-        foreach ($item1 in $Array1) {
-            $key1 = if ($KeyProperty -eq "FlexAppPackages") {
-                $item1.FlexAppPackages[0].FlexAppPackageId
-            } else {
-                $item1.$KeyProperty
-            }
-            
-            if ($key1 -eq $key2) {
-                $matchingItem1 = $item1
-                break
-            }
-        }
-        
-        if (-not $matchingItem1) {
-            # Added item
-            $differences += @{
-                Category = $Category
-                Property = $key2
-                OldValue = $null
-                NewValue = "Present"
-                ChangeType = "Added"
-                Details = $item2
-            }
-        } else {
-            # Check for modifications
-            $item1Json = $matchingItem1 | ConvertTo-Json -Depth 10
-            $item2Json = $item2 | ConvertTo-Json -Depth 10
-            
-            if ($item1Json -ne $item2Json) {
-                $differences += @{
-                    Category = $Category
-                    Property = $key2
-                    OldValue = $matchingItem1
-                    NewValue = $item2
-                    ChangeType = "Modified"
-                    Details = @{
-                        Old = $matchingItem1
-                        New = $item2
+            if (Test-Path $metadataPath) {
+                try {
+                    $metadata = Get-Content $metadataPath | ConvertFrom-Json
+                    
+                    # Apply filters
+                    if ($BackupType -and $metadata.BackupType -ne $BackupType) {
+                        continue
                     }
+                    
+                    if ($ConfigurationName) {
+                        $hasConfig = $metadata.Configurations | Where-Object { $_.Name -eq $ConfigurationName }
+                        if (-not $hasConfig) {
+                            continue
+                        }
+                    }
+                    
+                    $backups += [PSCustomObject]@{
+                        BackupId = $metadata.BackupId
+                        BackupPath = $folder.FullName
+                        BackupTime = [DateTime]$metadata.BackupTime
+                        BackupType = $metadata.BackupType
+                        Comment = $metadata.Comment
+                        ConfigurationCount = ($metadata.Configurations | Where-Object { $_.Success }).Count
+                        CreatedBy = $metadata.CreatedBy
+                        ComputerName = $metadata.ComputerName
+                        FolderName = $folder.Name
+                    }
+                }
+                catch {
+                    Write-Verbose "Could not read backup metadata from '$($folder.Name)': $_"
                 }
             }
         }
+        
+        return $backups
     }
-    
-    return $differences
+    catch {
+        Write-Error "Failed to get configuration backups: $_"
+        return @()
+    }
 }
 
-function Show-ProUConfigurationComparisonConsole {
+function Compare-ProUConfigurations {
     <#
     .SYNOPSIS
-        Shows configuration comparison in console format.
+        Compares two ProfileUnity configurations.
     
-    .PARAMETER Differences
-        Array of differences to display
+    .DESCRIPTION
+        Compares configurations and shows differences.
     
-    .PARAMETER Version1Label
-        Label for first version
+    .PARAMETER Configuration1
+        Name of the first configuration
     
-    .PARAMETER Version2Label
-        Label for second version
+    .PARAMETER Configuration2
+        Name of the second configuration
     
     .PARAMETER ShowDetails
         Show detailed differences
+    
+    .EXAMPLE
+        Compare-ProUConfigurations -Configuration1 "Production" -Configuration2 "Test"
     #>
     [CmdletBinding()]
     param(
-        [array]$Differences,
-        [string]$Version1Label,
-        [string]$Version2Label,
+        [Parameter(Mandatory)]
+        [string]$Configuration1,
+        
+        [Parameter(Mandatory)]
+        [string]$Configuration2,
+        
         [switch]$ShowDetails
     )
     
-    Write-Host "`n╔══════════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "║       Configuration Comparison           ║" -ForegroundColor Cyan
-    Write-Host "╚══════════════════════════════════════════╝" -ForegroundColor Cyan
-    
-    Write-Host "`n📊 Comparing:" -ForegroundColor Yellow
-    Write-Host "  Version 1: $Version1Label" -ForegroundColor White
-    Write-Host "  Version 2: $Version2Label" -ForegroundColor White
-    
-    if ($Differences.Count -eq 0) {
-        Write-Host "`n✅ No differences found - configurations are identical" -ForegroundColor Green
-        return
-    }
-    
-    Write-Host "`n📈 Summary:" -ForegroundColor Yellow
-    $added = ($Differences | Where-Object { $_.ChangeType -eq "Added" }).Count
-    $removed = ($Differences | Where-Object { $_.ChangeType -eq "Removed" }).Count
-    $modified = ($Differences | Where-Object { $_.ChangeType -eq "Modified" }).Count
-    
-    Write-Host "  ➕ Added: $added" -ForegroundColor Green
-    Write-Host "  ➖ Removed: $removed" -ForegroundColor Red
-    Write-Host "  🔄 Modified: $modified" -ForegroundColor Yellow
-    Write-Host "  📊 Total Differences: $($Differences.Count)" -ForegroundColor Cyan
-    
-    # Group by category
-    $categories = $Differences | Group-Object Category
-    
-    foreach ($category in $categories) {
-        Write-Host "`n🔸 $($category.Name):" -ForegroundColor Cyan
+    try {
+        Write-Host "Comparing configurations..." -ForegroundColor Cyan
         
-        foreach ($diff in $category.Group) {
-            $icon = switch ($diff.ChangeType) {
-                "Added" { "➕" }
-                "Removed" { "➖" }
-                "Modified" { "🔄" }
-                default { "•" }
-            }
-            
-            Write-Host "  $icon $($diff.Property): $($diff.ChangeType)" -ForegroundColor White
-            
-            if ($ShowDetails) {
-                switch ($diff.ChangeType) {
-                    "Added" {
-                        Write-Host "      New: $($diff.NewValue)" -ForegroundColor Green
-                    }
-                    "Removed" {
-                        Write-Host "      Was: $($diff.OldValue)" -ForegroundColor Red
-                    }
-                    "Modified" {
-                        Write-Host "      Was: $($diff.OldValue)" -ForegroundColor Red
-                        Write-Host "      Now: $($diff.NewValue)" -ForegroundColor Green
-                    }
-                }
+        # Load both configurations
+        $config1 = Get-ProUConfig | Where-Object { $_.Name -eq $Configuration1 }
+        $config2 = Get-ProUConfig | Where-Object { $_.Name -eq $Configuration2 }
+        
+        if (-not $config1) {
+            throw "Configuration '$Configuration1' not found"
+        }
+        
+        if (-not $config2) {
+            throw "Configuration '$Configuration2' not found"
+        }
+        
+        # Get full configuration details
+        $config1Details = Invoke-ProfileUnityApi -Endpoint "configuration/$($config1.id)"
+        $config2Details = Invoke-ProfileUnityApi -Endpoint "configuration/$($config2.id)"
+        
+        $config1Data = $config1Details.tag
+        $config2Data = $config2Details.tag
+        
+        Write-Host "Configuration Comparison:" -ForegroundColor Green
+        Write-Host "  Config 1: $Configuration1" -ForegroundColor White
+        Write-Host "  Config 2: $Configuration2" -ForegroundColor White
+        Write-Host ""
+        
+        # Compare basic properties
+        $differences = @()
+        
+        if ($config1Data.disabled -ne $config2Data.disabled) {
+            $differences += "Enabled status differs: $(-not $config1Data.disabled) vs $(-not $config2Data.disabled)"
+        }
+        
+        # Compare module counts
+        $modules1Count = if ($config1Data.modules) { $config1Data.modules.Count } else { 0 }
+        $modules2Count = if ($config2Data.modules) { $config2Data.modules.Count } else { 0 }
+        
+        if ($modules1Count -ne $modules2Count) {
+            $differences += "Module count differs: $modules1Count vs $modules2Count"
+        }
+        
+        # Compare ADMX template counts
+        $admx1Count = if ($config1Data.AdministrativeTemplates) { $config1Data.AdministrativeTemplates.Count } else { 0 }
+        $admx2Count = if ($config2Data.AdministrativeTemplates) { $config2Data.AdministrativeTemplates.Count } else { 0 }
+        
+        if ($admx1Count -ne $admx2Count) {
+            $differences += "ADMX template count differs: $admx1Count vs $admx2Count"
+        }
+        
+        if ($differences.Count -eq 0) {
+            Write-Host "Configurations appear to be similar" -ForegroundColor Green
+        } else {
+            Write-Host "Differences found:" -ForegroundColor Yellow
+            $differences | ForEach-Object {
+                Write-Host "  - $_" -ForegroundColor White
             }
         }
+        
+        if ($ShowDetails) {
+            Write-Host "`nDetailed comparison:" -ForegroundColor Cyan
+            # Additional detailed comparison logic could be added here
+            Write-Host "Detailed comparison not yet implemented" -ForegroundColor Yellow
+        }
+        
+        return $differences
+    }
+    catch {
+        Write-Error "Failed to compare configurations: $_"
+        throw
     }
 }
 
-function Update-ProUVersionHistory {
+function New-ProUConfigurationCheckpoint {
     <#
     .SYNOPSIS
-        Updates the version history database.
+        Creates a checkpoint before making changes.
     
-    .PARAMETER Entries
-        Array of version entries to add
+    .DESCRIPTION
+        Creates a named checkpoint that can be restored later.
+    
+    .PARAMETER Name
+        Name for the checkpoint
+    
+    .PARAMETER ConfigurationName
+        Configuration to checkpoint
+    
+    .PARAMETER Description
+        Description of what changes are being made
+    
+    .EXAMPLE
+        New-ProUConfigurationCheckpoint -Name "BeforeADMXChanges" -ConfigurationName "Production"
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [array]$Entries
+        [string]$Name,
+        
+        [string]$ConfigurationName,
+        
+        [string]$Description = ""
     )
     
-    $historyPath = Join-Path $script:DefaultPaths.Backup "VersionHistory.json"
-    
-    # Load existing history
-    $history = if (Test-Path $historyPath) {
-        try {
-            Get-Content $historyPath | ConvertFrom-Json
-        }
-        catch {
-            @()
-        }
-    } else {
-        @()
-    }
-    
-    # Add new entries
-    $history += $Entries
-    
-    # Sort by timestamp (newest first)
-    $history = $history | Sort-Object Timestamp -Descending
-    
-    # Save updated history
     try {
-        $history | ConvertTo-Json -Depth 5 | Out-File -FilePath $historyPath -Encoding UTF8
+        $checkpointComment = "Checkpoint: $Name"
+        if ($Description) {
+            $checkpointComment += " - $Description"
+        }
+        
+        $backup = Backup-ProUConfigurationState -ConfigurationName $ConfigurationName -BackupType "Manual" -Comment $checkpointComment
+        
+        # Create named checkpoint reference
+        $checkpointsDir = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'ProfileUnity-Backups\Checkpoints'
+        if (-not (Test-Path $checkpointsDir)) {
+            New-Item -ItemType Directory -Path $checkpointsDir -Force | Out-Null
+        }
+        
+        $checkpointFile = Join-Path $checkpointsDir "$Name.json"
+        $checkpointData = @{
+            Name = $Name
+            Description = $Description
+            ConfigurationName = $ConfigurationName
+            BackupId = $backup.BackupId
+            BackupPath = Split-Path $backup.Configurations[0].BackupPath -Parent
+            CreatedTime = Get-Date
+            CreatedBy = $env:USERNAME
+        }
+        
+        $checkpointData | ConvertTo-Json -Depth 3 | Out-File $checkpointFile -Encoding UTF8
+        
+        Write-Host "Checkpoint created: $Name" -ForegroundColor Green
+        Write-Host "  Backup ID: $($backup.BackupId)" -ForegroundColor Gray
+        
+        return $checkpointData
     }
     catch {
-        Write-Warning "Could not update version history: $_"
+        Write-Error "Failed to create checkpoint: $_"
+        throw
     }
 }
 
-function Remove-ProUOldBackups {
+function Restore-ProUConfigurationCheckpoint {
     <#
     .SYNOPSIS
-        Removes old backups based on retention policy.
+        Restores a configuration from a named checkpoint.
     
-    .PARAMETER RetentionDays
-        Number of days to retain backups
+    .DESCRIPTION
+        Restores configurations from a previously created checkpoint.
+    
+    .PARAMETER Name
+        Name of the checkpoint to restore
+    
+    .PARAMETER Force
+        Skip confirmation prompts
+    
+    .EXAMPLE
+        Restore-ProUConfigurationCheckpoint -Name "BeforeADMXChanges"
     #>
-    [CmdletBinding()]
-    param(
-        [int]$RetentionDays = 30
-    )
-    
-    $backupRoot = Join-Path $script:DefaultPaths.Backup "ConfigurationVersions"
-    
-    if (-not (Test-Path $backupRoot)) {
-        return
-    }
-    
-    $cutoffDate = (Get-Date).AddDays(-$RetentionDays)
-    $removedCount = 0
-    
-    Get-ChildItem $backupRoot -Directory | ForEach-Object {
-        if ($_.CreationTime -lt $cutoffDate) {
-            try {
-                Remove-Item $_.FullName -Recurse -Force
-                $removedCount++
-            }
-            catch {
-                Write-Verbose "Could not remove old backup: $($_.FullName)"
-            }
-        }
-    }
-    
-    if ($removedCount -gt 0) {
-        Write-Verbose "Removed $removedCount old backup directories"
-    }
-}
-
-function Add-ProUOperationLog {
-    <#
-    .SYNOPSIS
-        Adds an entry to the operation log.
-    
-    .PARAMETER Entry
-        Log entry to add
-    #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
-        [object]$Entry
+        [string]$Name,
+        
+        [switch]$Force
     )
     
-    $logPath = Join-Path $script:DefaultPaths.Logs "OperationLog.json"
-    
-    # Load existing log
-    $log = if (Test-Path $logPath) {
-        try {
-            Get-Content $logPath | ConvertFrom-Json
-        }
-        catch {
-            @()
-        }
-    } else {
-        @()
-    }
-    
-    # Add new entry
-    $log += $Entry
-    
-    # Keep only last 1000 entries
-    if ($log.Count -gt 1000) {
-        $log = $log | Sort-Object Timestamp -Descending | Select-Object -First 1000
-    }
-    
-    # Save log
     try {
-        if (-not (Test-Path (Split-Path $logPath))) {
-            New-Item -ItemType Directory -Path (Split-Path $logPath) -Force | Out-Null
+        $checkpointsDir = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'ProfileUnity-Backups\Checkpoints'
+        $checkpointFile = Join-Path $checkpointsDir "$Name.json"
+        
+        if (-not (Test-Path $checkpointFile)) {
+            throw "Checkpoint '$Name' not found"
         }
-        $log | ConvertTo-Json -Depth 5 | Out-File -FilePath $logPath -Encoding UTF8
+        
+        $checkpointData = Get-Content $checkpointFile | ConvertFrom-Json
+        
+        Write-Host "Restoring checkpoint: $Name" -ForegroundColor Cyan
+        Write-Host "  Description: $($checkpointData.Description)" -ForegroundColor Gray
+        Write-Host "  Created: $($checkpointData.CreatedTime)" -ForegroundColor Gray
+        Write-Host "  Configuration: $($checkpointData.ConfigurationName)" -ForegroundColor Gray
+        
+        if (-not $Force -and -not $PSCmdlet.ShouldProcess("checkpoint '$Name'", "Restore configuration")) {
+            Write-Host "Restore cancelled" -ForegroundColor Yellow
+            return
+        }
+        
+        $result = Restore-ProUConfigurationState -BackupPath $checkpointData.BackupPath -ConfigurationName $checkpointData.ConfigurationName -Force
+        
+        Write-Host "Checkpoint '$Name' restored successfully" -ForegroundColor Green
+        
+        return $result
     }
     catch {
-        Write-Verbose "Could not update operation log: $_"
+        Write-Error "Failed to restore checkpoint: $_"
+        throw
     }
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Backup-ProUConfigurationState',
-    'Get-ProUConfigurationHistory',
-    'Restore-ProUConfigurationVersion',
-    'Compare-ProUConfigurationVersions',
-    'Show-ProUConfigurationComparisonConsole',
-    'Remove-ProUOldBackups'
+    'Restore-ProUConfigurationState',
+    'Get-ProUConfigurationBackups',
+    'Compare-ProUConfigurations',
+    'New-ProUConfigurationCheckpoint',
+    'Restore-ProUConfigurationCheckpoint'
 )
+#>

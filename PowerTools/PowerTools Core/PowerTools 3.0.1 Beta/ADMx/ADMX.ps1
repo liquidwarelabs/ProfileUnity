@@ -1,48 +1,217 @@
 # ADMX/ADMX.ps1 - ProfileUnity ADMX Template Management Functions with Name Resolution
 
+function Clean-AdmxText {
+    <#
+    .SYNOPSIS
+        Cleans problematic characters from ADMX text data to prevent JSON parsing errors.
+    
+    .DESCRIPTION
+        Removes or replaces characters that cause JSON parsing errors during Save-ProUConfig.
+        This includes control characters, invalid Unicode sequences, and other problematic characters.
+    
+    .PARAMETER Text
+        The text to clean
+    
+    .RETURNS
+        Cleaned text safe for JSON serialization
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Text
+    )
+    
+    if ([string]::IsNullOrEmpty($Text)) {
+        return $Text
+    }
+    
+    # More aggressive cleaning - only allow safe ASCII characters and basic punctuation
+    # This is more restrictive but should prevent all JSON parsing issues
+    $cleaned = $Text -replace '[^\x20-\x7E]', ' '
+    
+    # Replace multiple spaces with single space
+    $cleaned = $cleaned -replace '\s+', ' '
+    
+    # Trim whitespace
+    $cleaned = $cleaned.Trim()
+    
+    # Ensure the text is not too long (JSON has limits)
+    if ($cleaned.Length -gt 10000) {
+        $cleaned = $cleaned.Substring(0, 10000) + "..."
+    }
+    
+    return $cleaned
+}
+
+function Clean-AdmxObject {
+    <#
+    .SYNOPSIS
+        Recursively cleans all text properties in an ADMX object.
+    
+    .DESCRIPTION
+        Traverses through all properties of an ADMX object and cleans any string values
+        to prevent JSON parsing errors during Save-ProUConfig.
+    
+    .PARAMETER Object
+        The object to clean
+    
+    .RETURNS
+        The cleaned object
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [object]$Object
+    )
+    
+    if ($null -eq $Object) {
+        return $Object
+    }
+    
+    # Handle arrays
+    if ($Object -is [array]) {
+        for ($i = 0; $i -lt $Object.Count; $i++) {
+            $Object[$i] = Clean-AdmxObject -Object $Object[$i]
+        }
+        return $Object
+    }
+    
+    # Handle PSCustomObject and other objects with properties
+    if ($Object -is [PSCustomObject] -or $Object.GetType().GetProperties()) {
+        $properties = $Object.PSObject.Properties
+        foreach ($prop in $properties) {
+            if ($prop.Value -is [string]) {
+                $prop.Value = Clean-AdmxText -Text $prop.Value
+            }
+            elseif ($prop.Value -is [array] -or $prop.Value -is [PSCustomObject]) {
+                $prop.Value = Clean-AdmxObject -Object $prop.Value
+            }
+        }
+        return $Object
+    }
+    
+    # Handle simple types
+    if ($Object -is [string]) {
+        return Clean-AdmxText -Text $Object
+    }
+    
+    return $Object
+}
+
+
+
+function Clean-ProUConfiguration {
+    <#
+    .SYNOPSIS
+        Cleans problematic Unicode characters from the current ProfileUnity configuration.
+    
+    .DESCRIPTION
+        Directly cleans all HelpText and other text fields in AdministrativeTemplates to prevent JSON parsing errors.
+        This function should be called before saving configurations that contain ADMX templates.
+    
+    .EXAMPLE
+        Clean-ProUConfiguration
+        Save-ProUConfig -Force
+    #>
+    [CmdletBinding()]
+    param()
+    
+    # Check if configuration is loaded
+    $currentConfig = if ($global:CurrentConfig) { 
+        $global:CurrentConfig 
+    } elseif ($script:ModuleConfig.CurrentItems.Config) { 
+        $script:ModuleConfig.CurrentItems.Config 
+    } else {
+        throw "No configuration loaded for editing. Use Edit-ProUConfig first."
+    }
+    
+    Write-Verbose "Cleaning problematic Unicode characters from configuration..."
+    
+    $cleanedCount = 0
+    
+    if ($currentConfig.AdministrativeTemplates) {
+        for ($i = 0; $i -lt $currentConfig.AdministrativeTemplates.Count; $i++) {
+            $template = $currentConfig.AdministrativeTemplates[$i]
+            
+            # Clean template-level text fields
+            if ($template.DisplayName -and $template.DisplayName -is [string]) {
+                $template.DisplayName = Clean-AdmxText -Text $template.DisplayName
+            }
+            if ($template.Description -and $template.Description -is [string]) {
+                $template.Description = Clean-AdmxText -Text $template.Description
+            }
+            
+            # Directly clean all HelpText fields in the template
+            if ($template.Categories) {
+                foreach ($category in $template.Categories) {
+                    if ($category.Children) {
+                        foreach ($child in $category.Children) {
+                            if ($child.Children) {
+                                foreach ($grandchild in $child.Children) {
+                                    if ($grandchild.Settings) {
+                                        foreach ($setting in $grandchild.Settings) {
+                                            # Clean HelpText - this is the main culprit
+                                            if ($setting.HelpText -and $setting.HelpText -is [string]) {
+                                                $originalLength = $setting.HelpText.Length
+                                                $setting.HelpText = Clean-AdmxText -Text $setting.HelpText
+                                                $newLength = $setting.HelpText.Length
+                                                
+                                                if ($originalLength -ne $newLength) {
+                                                    $cleanedCount++
+                                                    Write-Verbose "Cleaned HelpText: $($setting.Name) - $originalLength -> $newLength chars"
+                                                }
+                                            }
+                                            
+                                            # Clean other text fields
+                                            if ($setting.Name -and $setting.Name -is [string]) {
+                                                $setting.Name = Clean-AdmxText -Text $setting.Name
+                                            }
+                                            if ($setting.Description -and $setting.Description -is [string]) {
+                                                $setting.Description = Clean-AdmxText -Text $setting.Description
+                                            }
+                                            if ($setting.DisplayName -and $setting.DisplayName -is [string]) {
+                                                $setting.DisplayName = Clean-AdmxText -Text $setting.DisplayName
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    Write-Verbose "Cleaned $cleanedCount HelpText fields"
+    Write-Host "Configuration is now ready for saving" -ForegroundColor Green
+}
+
 function Add-ProUAdmx {
     <#
     .SYNOPSIS
-        Adds ADMX/ADML templates to the current ProfileUnity configuration.
-    
+        Adds ADMx/ADMl templates to the current ProfileUnity configuration.
     .DESCRIPTION
-        Queries the ProfileUnity server for ADMX policy settings and adds them
-        to the currently loaded configuration. Supports name resolution for filter parameters.
-    
+        This function queries the ProfileUnity server for ADMX policy settings and adds them
+        to the currently loaded configuration.
     .PARAMETER AdmxFile
         The ADMX file name (e.g., "chrome.admx")
-    
     .PARAMETER AdmlFile
         The ADML file name (e.g., "chrome.adml")
-    
     .PARAMETER GpoId
         The GPO ID to use for the ADMX settings
-    
     .PARAMETER FilterName
-        Filter name to apply to the ADMX settings (supports name resolution)
-    
-    .PARAMETER FilterId
-        Filter ID to apply to the ADMX settings (supports name resolution)
-    
+        Optional filter name to apply to the ADMX settings
     .PARAMETER Description
-        Description for the ADMX settings
-    
+        Optional description for the ADMX settings
     .PARAMETER Sequence
         The sequence number for the ADMX settings (default: 1)
-    
-    .PARAMETER Disabled
-        Add the ADMX template in disabled state
-    
     .EXAMPLE
         Add-ProUAdmx -AdmxFile "chrome.admx" -AdmlFile "chrome.adml" -GpoId "12345"
-        
     .EXAMPLE
         Add-ProUAdmx -AdmxFile "firefox.admx" -AdmlFile "firefox.adml" -GpoId "67890" -FilterName "Domain Computers"
-        
-    .EXAMPLE
-        Add-ProUAdmx -AdmxFile "edge.admx" -AdmlFile "edge.adml" -GpoId "11111" -FilterId "123"
     #>
-    [CmdletBinding(DefaultParameterSetName = 'NoFilter')]
+    [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
         [string]$AdmxFile,
@@ -53,27 +222,22 @@ function Add-ProUAdmx {
         [Parameter(Mandatory)]
         [string]$GpoId,
         
-        [Parameter(ParameterSetName = 'WithFilterName')]
         [string]$FilterName,
-        
-        [Parameter(ParameterSetName = 'WithFilterId')]
-        [string]$FilterId,
         
         [string]$Description = "Added via PowerTools",
         
-        [int]$Sequence = 1,
-        
-        [switch]$Disabled
+        [int]$Sequence = 1
     )
     
     Begin {
-        # Check if configuration is loaded
-        $currentConfig = $script:ModuleConfig.CurrentItems.Config
-        if (-not $currentConfig -and $global:CurrentConfig) {
-            $currentConfig = $global:CurrentConfig
-        }
+        Assert-ProfileUnityConnection
         
-        if (-not $currentConfig) {
+        # Check if configuration is loaded
+        $currentConfig = if ($script:ModuleConfig.CurrentItems.Config) { 
+            $script:ModuleConfig.CurrentItems.Config 
+        } elseif ($global:CurrentConfig) { 
+            $global:CurrentConfig 
+        } else {
             throw "No configuration loaded for editing. Use Edit-ProUConfig first."
         }
     }
@@ -81,87 +245,109 @@ function Add-ProUAdmx {
     Process {
         try {
             Write-Host "Querying ProfileUnity server for ADMX settings..." -ForegroundColor Yellow
+            Write-Verbose "Parameters: AdmxFile=$AdmxFile, AdmlFile=$AdmlFile, GpoId=$GpoId, Description=$Description, Sequence=$Sequence"
             
             # Build the query URL
             $queryUrl = "server/admxadmlfiles?admx=$AdmxFile&adml=$AdmlFile&gpoid=$GpoId"
+            Write-Verbose "API URL: $queryUrl"
             
             # Query the server
+            Write-Verbose "Calling Invoke-ProfileUnityApi..."
             $response = Invoke-ProfileUnityApi -Endpoint $queryUrl
+            Write-Verbose "API Response Type: $($response.GetType().Name)"
+            Write-Verbose "API Response Keys: $($response.PSObject.Properties.Name -join ', ')"
             
             if (-not $response -or -not $response.tag) {
+                Write-Verbose "Full API Response: $($response | ConvertTo-Json -Depth 3)"
                 throw "No ADMX data returned from server"
             }
             
             $admxRule = $response.tag
             
-            # Resolve filter if specified
-            $resolvedFilterId = $null
-            $resolvedFilterName = $null
+            if (-not $admxRule) {
+                throw "No ADMX data returned from server"
+            }
             
+            # Clean the ADMX rule to prevent JSON parsing errors
+            Write-Verbose "Cleaning ADMX rule to prevent JSON parsing errors..."
+            
+            # Directly clean all HelpText fields in the ADMX rule
+            if ($admxRule.Categories) {
+                foreach ($category in $admxRule.Categories) {
+                    if ($category.Children) {
+                        foreach ($child in $category.Children) {
+                            if ($child.Children) {
+                                foreach ($grandchild in $child.Children) {
+                                    if ($grandchild.Settings) {
+                                        foreach ($setting in $grandchild.Settings) {
+                                            # Clean HelpText - this is the main culprit
+                                            if ($setting.HelpText -and $setting.HelpText -is [string]) {
+                                                $originalLength = $setting.HelpText.Length
+                                                $setting.HelpText = Clean-AdmxText -Text $setting.HelpText
+                                                $newLength = $setting.HelpText.Length
+                                                if ($originalLength -ne $newLength) {
+                                                    Write-Verbose "Cleaned HelpText: $($setting.Name) - $originalLength -> $newLength chars"
+                                                }
+                                            }
+                                            
+                                            # Clean other text fields
+                                            if ($setting.Name -and $setting.Name -is [string]) {
+                                                $setting.Name = Clean-AdmxText -Text $setting.Name
+                                            }
+                                            if ($setting.Description -and $setting.Description -is [string]) {
+                                                $setting.Description = Clean-AdmxText -Text $setting.Description
+                                            }
+                                            if ($setting.DisplayName -and $setting.DisplayName -is [string]) {
+                                                $setting.DisplayName = Clean-AdmxText -Text $setting.DisplayName
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Write-Verbose "ADMX Categories cleaned successfully"
+            }
+            
+            # Clean other text fields
+            if ($admxRule.Description -and $admxRule.Description -is [string]) {
+                $admxRule.Description = Clean-AdmxText -Text $admxRule.Description
+            }
+            
+            # Also clean the DisplayName if it exists
+            if ($admxRule.DisplayName -and $admxRule.DisplayName -is [string]) {
+                $admxRule.DisplayName = Clean-AdmxText -Text $admxRule.DisplayName
+            }
+            
+            Write-Verbose "ADMX rule cleaned using direct approach"
+            
+            # Ensure the rule is properly structured for the array
+            Write-Verbose "Verifying ADMX rule structure..."
+            if ($admxRule -is [array]) {
+                Write-Verbose "ADMX rule is already an array"
+            } else {
+                Write-Verbose "ADMX rule is a single object - this is correct"
+            }
+            
+            # Get filter ID if filter name provided
+            $filterId = $null
             if ($FilterName) {
-                Write-Verbose "Resolving filter name: $FilterName"
-                $resolvedFilterId = Resolve-ProUFilterId -InputValue $FilterName
-                if ($resolvedFilterId) {
-                    $filter = Get-ProUFilters | Where-Object { $_.ID -eq $resolvedFilterId }
-                    if ($filter) {
-                        Write-Host "Resolved '$FilterName' to Filter ID: $resolvedFilterId" -ForegroundColor Green
-                        $resolvedFilterName = $filter.Name
-                        $admxRule.FilterId = $resolvedFilterId
-                        $admxRule.Filter = $resolvedFilterName
-                    } else {
-                        # Try direct name lookup
-                        $filters = Get-ProUFilters -Name $FilterName -ErrorAction SilentlyContinue
-                        if ($filters) {
-                            $filter = $filters | Select-Object -First 1
-                            $resolvedFilterId = $filter.ID
-                            $resolvedFilterName = $filter.Name
-                            $admxRule.FilterId = $resolvedFilterId
-                            $admxRule.Filter = $resolvedFilterName
-                            Write-Host "Found filter: $resolvedFilterName (ID: $resolvedFilterId)" -ForegroundColor Green
-                        } else {
-                            Write-Warning "Filter '$FilterName' not found - proceeding without filter"
-                        }
-                    }
-                } else {
-                    # Try direct name lookup
-                    try {
-                        $filters = Get-ProUFilters -Name $FilterName -ErrorAction SilentlyContinue
-                        if ($filters) {
-                            $filter = $filters | Select-Object -First 1
-                            $resolvedFilterId = $filter.ID
-                            $resolvedFilterName = $filter.Name
-                            $admxRule.FilterId = $resolvedFilterId
-                            $admxRule.Filter = $resolvedFilterName
-                            Write-Host "Found filter: $resolvedFilterName (ID: $resolvedFilterId)" -ForegroundColor Green
-                        } else {
-                            Write-Warning "Filter '$FilterName' not found - proceeding without filter"
-                        }
-                    }
-                    catch {
-                        Write-Warning "Could not resolve filter '$FilterName' - proceeding without filter"
-                    }
-                }
-            } elseif ($FilterId) {
-                Write-Verbose "Resolving filter ID: $FilterId"
-                $resolvedFilterId = Resolve-ProUFilterId -InputValue $FilterId
-                if ($resolvedFilterId -and $resolvedFilterId -ne $FilterId) {
-                    Write-Host "Resolved '$FilterId' to Filter ID: $resolvedFilterId" -ForegroundColor Green
-                }
-                $targetFilterId = $resolvedFilterId -or $FilterId
-                
-                $filter = Get-ProUFilters | Where-Object { $_.ID -eq $targetFilterId }
+                $filter = Get-ProUFilters | Where-Object { $_.name -eq $FilterName }
                 if ($filter) {
-                    $resolvedFilterId = $filter.ID
-                    $resolvedFilterName = $filter.Name
-                    $admxRule.FilterId = $resolvedFilterId
-                    $admxRule.Filter = $resolvedFilterName
-                    Write-Host "Using filter: $resolvedFilterName (ID: $resolvedFilterId)" -ForegroundColor Green
+                    $filterId = $filter.id
+                    Write-Host "Using filter: $FilterName (ID: $filterId)" -ForegroundColor Green
                 } else {
-                    Write-Warning "Filter with ID '$targetFilterId' not found - proceeding without filter"
+                    Write-Warning "Filter '$FilterName' not found - proceeding without filter"
                 }
             }
             
             # Update the ADMX rule with our settings
+            if ($filterId) {
+                $admxRule.FilterId = $filterId
+                $admxRule.Filter = $FilterName
+            }
+            
             if ($Description) {
                 $admxRule.Description = $Description
             }
@@ -170,36 +356,46 @@ function Add-ProUAdmx {
                 $admxRule.Sequence = $Sequence
             }
             
-            # Set disabled state
-            $admxRule.Disabled = $Disabled.ToString().ToLower()
-            
             # Initialize AdministrativeTemplates array if it doesn't exist
             if ($null -eq $currentConfig.AdministrativeTemplates) {
+                Write-Verbose "Initializing AdministrativeTemplates array"
                 $currentConfig | Add-Member -NotePropertyName AdministrativeTemplates -NotePropertyValue @() -Force
             }
             
-            # Add the new rule
-            $currentConfig.AdministrativeTemplates += $admxRule
+            Write-Verbose "Current AdministrativeTemplates count: $($currentConfig.AdministrativeTemplates.Count)"
             
-            # Update both storage locations
+            # Add the new rule
+            Write-Verbose "Adding ADMX rule to configuration..."
+            $currentConfig.AdministrativeTemplates += $admxRule
+            Write-Verbose "New AdministrativeTemplates count: $($currentConfig.AdministrativeTemplates.Count)"
+            
+            # Update both storage locations (matching working script)
+            Write-Verbose "Updating storage locations..."
             $script:ModuleConfig.CurrentItems.Config = $currentConfig
             $global:CurrentConfig = $currentConfig
+            Write-Verbose "Storage locations updated successfully"
             
-            Write-Host "ADMX template added to configuration" -ForegroundColor Green
-            Write-Host "  ADMX File: $AdmxFile" -ForegroundColor Cyan
-            Write-Host "  ADML File: $AdmlFile" -ForegroundColor Cyan
+            Write-Host "Successfully added ADMX rule:" -ForegroundColor Green
+            Write-Host "  ADMX: $AdmxFile" -ForegroundColor Cyan
+            Write-Host "  ADML: $AdmlFile" -ForegroundColor Cyan
             Write-Host "  GPO ID: $GpoId" -ForegroundColor Cyan
-            if ($resolvedFilterName) {
-                Write-Host "  Filter: $resolvedFilterName" -ForegroundColor Cyan
+            if ($filterId) {
+                Write-Host "  Filter: $FilterName" -ForegroundColor Cyan
             }
-            Write-Host "  Sequence: $Sequence" -ForegroundColor Cyan
-            Write-Host "  Disabled: $Disabled" -ForegroundColor Cyan
-            Write-Host "Use Save-ProUConfig to save changes" -ForegroundColor Yellow
+            
+            # Count settings
+            $settingCount = 0
+            if ($admxRule.TemplateSettingStates) {
+                $settingCount = @($admxRule.TemplateSettingStates).Count
+            }
+            
+            Write-Host "  Settings: $settingCount" -ForegroundColor Cyan
+            Write-Host "`nUse Save-ProUConfig to save changes" -ForegroundColor Yellow
             
             return $admxRule
         }
         catch {
-            Write-Error "Failed to add ADMX template: $_"
+            Write-Error "Failed to add ADMX configuration: $_"
             throw
         }
     }
@@ -1339,6 +1535,7 @@ function Resolve-ProUFilterId {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Add-ProUAdmx',
     'Get-ProUAdmx',
@@ -1350,3 +1547,4 @@ Export-ModuleMember -Function @(
     'Test-ProUAdmx',
     'Resolve-ProUFilterId'
 )
+#>

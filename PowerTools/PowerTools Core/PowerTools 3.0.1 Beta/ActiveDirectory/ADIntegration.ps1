@@ -1,4 +1,4 @@
-# ADIntegration.ps1 - ProfileUnity Active Directory Integration Functions
+﻿# ADIntegration.ps1 - ProfileUnity Active Directory Integration Functions
 
 function Get-ProUADDomains {
     <#
@@ -645,13 +645,15 @@ function Search-ProUAD {
 }
 
 # Export functions
+# Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 Export-ModuleMember -Function @(
     'Get-ProUADDomains',
     'Get-ProUADDomainControllers',
-    'Get-ProUADUsers',
-    'Get-ProUADGroups', 
-    'Get-ProUADComputers',
-    'Get-ProUADOrganizationalUnits',
     'Test-ProUADConnectivity',
     'Search-ProUAD'
 )
+#>
+
+
+
+
