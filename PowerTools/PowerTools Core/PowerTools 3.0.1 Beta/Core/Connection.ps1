@@ -1,4 +1,4 @@
-﻿# Connection.ps1 - ProfileUnity Connection Management and Core API Functions
+# Connection.ps1 - ProfileUnity Connection Management and Core API Functions
 # Location: \Core\Connection.ps1
 # Compatible with: ProfileUnity PowerTools v3.0 / PowerShell 5.1+
 
@@ -8,7 +8,7 @@ function Connect-ProfileUnityServer {
         Connects to a ProfileUnity server and establishes an authenticated session.
     
     .DESCRIPTION
-        Authenticates to a ProfileUnity server using username/password credentials.
+        Authenticates to a ProfileUnity server using username/password credentials with CSRF token handling.
         Stores the session for subsequent API calls.
     
     .PARAMETER ServerName
@@ -67,18 +67,42 @@ function Connect-ProfileUnityServer {
         # Set TLS protocols
         [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls13
         
-        # Build authentication URL and body
-        $authUrl = "https://${ServerName}:${Port}/authenticate"
-        $authBody = "username=$($Credential.UserName)&password=$($Credential.GetNetworkCredential().Password)"
+        Write-Verbose "Connecting to ProfileUnity server: $ServerName"
         
-        Write-Verbose "Authenticating to: $authUrl"
+        # Clear existing session
+        $script:ModuleConfig.Session = $null
         
-        # Authenticate
-        $response = Invoke-WebRequest -Uri $authUrl -Method POST -Body $authBody -SessionVariable webSession -TimeoutSec 30
+        # Step 1: Get login page to obtain fresh CSRF token
+        $loginPageUrl = "https://${ServerName}:${Port}"
+        Write-Verbose "Getting login page: $loginPageUrl"
         
-        if ($response.StatusCode -eq 200) {
+        $loginPageResponse = Invoke-WebRequest -Uri $loginPageUrl -SessionVariable newSession -TimeoutSec 30
+        
+        # Step 2: Extract CSRF token from HTML
+        $csrfMatch = $loginPageResponse.Content | Select-String 'name="NCSRF" value="([^"]*)"'
+        if (-not $csrfMatch) {
+            throw "Could not extract CSRF token from login page"
+        }
+        
+        $csrfToken = $csrfMatch.Matches[0].Groups[1].Value
+        Write-Verbose "Extracted CSRF token: $($csrfToken.Substring(0, 20))..."
+        
+        # Step 3: Prepare login data with CSRF token
+        $loginData = @{
+            Username = $Credential.UserName
+            Password = $Credential.GetNetworkCredential().Password
+            NCSRF = $csrfToken
+        }
+        
+        # Step 4: Authenticate using the correct endpoint
+        $loginUrl = "https://${ServerName}:${Port}/form/authenticate"
+        Write-Verbose "Authenticating to: $loginUrl"
+        
+        $loginResponse = Invoke-WebRequest -Uri $loginUrl -Method POST -Body $loginData -WebSession $newSession -TimeoutSec 30
+        
+        if ($loginResponse.StatusCode -eq 200) {
             # Store session information
-            $script:ModuleConfig.Session = $webSession
+            $script:ModuleConfig.Session = $newSession
             $script:ModuleConfig.ServerName = $ServerName
             $script:ModuleConfig.Port = $Port
             $script:ModuleConfig.BaseUrl = "https://${ServerName}:${Port}/api"
@@ -86,7 +110,7 @@ function Connect-ProfileUnityServer {
             $script:ModuleConfig.ConnectedAt = Get-Date
             
             # Also set global variables for backward compatibility
-            $global:session = $webSession
+            $global:session = $newSession
             $global:servername = $ServerName
             
             Write-Host "Successfully connected to ProfileUnity server: $ServerName" -ForegroundColor Green
@@ -95,10 +119,11 @@ function Connect-ProfileUnityServer {
                 Port = $Port
                 Connected = $true
                 AuthenticationTime = Get-Date
+                CSRFToken = $csrfToken
             }
         }
         
-        throw "Authentication failed with status code: $($response.StatusCode)"
+        throw "Authentication failed with status code: $($loginResponse.StatusCode)"
     }
     catch {
         Write-Error "Connection failed: $($_.Exception.Message)"
@@ -180,10 +205,23 @@ function Test-ProfileUnityConnection {
     
     if ($Detailed) {
         try {
-            # Try to call the authenticated endpoint
-            $response = Invoke-ProfileUnityApi -Endpoint "authenticated" -Method GET -ErrorAction Stop
+            # Try to call the server/user endpoint to verify authentication
+            $headers = @{
+                'Accept' = 'application/json'
+                'X-Requested-With' = 'XMLHttpRequest'
+            }
             
-            if ($response) {
+            $testUrl = "https://${serverName}:8000/api/server/user?&_search=false&nd=$(Get-Date -UFormat %s)000&rows=1&page=1"
+            
+            $session = if ($script:ModuleConfig.Session) { 
+                $script:ModuleConfig.Session 
+            } else { 
+                $global:session 
+            }
+            
+            $response = Invoke-WebRequest -Uri $testUrl -Headers $headers -WebSession $session -ErrorAction Stop
+            
+            if ($response.StatusCode -eq 200 -and $response.Content -like '*"Type":"success"*') {
                 Write-Host "Connection active and authenticated to: $serverName" -ForegroundColor Green
                 return $true
             }
@@ -225,11 +263,12 @@ function Assert-ProfileUnityConnection {
 function Invoke-ProfileUnityApi {
     <#
     .SYNOPSIS
-        Invokes a ProfileUnity API endpoint.
+        Invokes a ProfileUnity API endpoint with proper authentication headers.
     
     .DESCRIPTION
         Wrapper function for making API calls to the ProfileUnity server.
         Handles authentication, JSON conversion, and error handling.
+        Uses the same headers that work for API calls.
     
     .PARAMETER Endpoint
         The API endpoint (without /api/ prefix)
@@ -243,8 +282,11 @@ function Invoke-ProfileUnityApi {
     .PARAMETER OutFile
         File path to save response content
     
+    .PARAMETER AdditionalHeaders
+        Additional headers to include
+    
     .EXAMPLE
-        Invoke-ProfileUnityApi -Endpoint "configuration" -Method GET
+        Invoke-ProfileUnityApi -Endpoint "server/user" -Method GET
         
     .EXAMPLE
         Invoke-ProfileUnityApi -Endpoint "configuration" -Method POST -Body $configObject
@@ -261,7 +303,7 @@ function Invoke-ProfileUnityApi {
         
         [string]$OutFile,
         
-        [hashtable]$Headers = @{}
+        [hashtable]$AdditionalHeaders = @{}
     )
     
     # Ensure connection
@@ -285,6 +327,17 @@ function Invoke-ProfileUnityApi {
     # Clean up endpoint
     $Endpoint = $Endpoint.TrimStart('/')
     
+    # Set standard headers that work with ProfileUnity API
+    $headers = @{
+        'Accept' = 'application/json'
+        'X-Requested-With' = 'XMLHttpRequest'
+    }
+    
+    # Add any additional headers
+    foreach ($key in $AdditionalHeaders.Keys) {
+        $headers[$key] = $AdditionalHeaders[$key]
+    }
+    
     # Build request parameters
     $params = @{
         Uri = "$($script:ModuleConfig.BaseUrl)/$Endpoint"
@@ -294,7 +347,7 @@ function Invoke-ProfileUnityApi {
         } else { 
             $global:session 
         }
-        Headers = $Headers
+        Headers = $headers
         ErrorAction = 'Stop'
     }
     
@@ -317,11 +370,31 @@ function Invoke-ProfileUnityApi {
     Write-Verbose "$Method $($params.Uri)"
     
     try {
-        $response = Invoke-RestMethod @params
-        return $response
+        # Use Invoke-WebRequest to get full response, then parse content
+        $response = Invoke-WebRequest @params
+        
+        # Try to parse as JSON if it looks like JSON
+        if ($response.Content -and $response.Content.TrimStart().StartsWith('{')) {
+            try {
+                return $response.Content | ConvertFrom-Json
+            }
+            catch {
+                # If JSON parsing fails, return raw content
+                return $response.Content
+            }
+        }
+        
+        return $response.Content
     }
     catch {
         Write-Verbose "API Error: $($_.Exception.Message)"
+        
+        # If we get authentication errors, suggest reconnecting
+        if ($_.Exception.Response.StatusCode -eq 'Unauthorized' -or 
+            $_.Exception.Response.StatusCode -eq 'Forbidden') {
+            Write-Warning "Authentication may have expired. Try running Connect-ProfileUnityServer again."
+        }
+        
         throw
     }
 }
@@ -431,20 +504,38 @@ function Get-ProfileUnityItem {
     .PARAMETER Name
         Optional name filter
     
+    .PARAMETER QueryParameters
+        Additional query parameters as hashtable
+    
     .EXAMPLE
         Get-ProfileUnityItem -ItemType configuration
+        
+    .EXAMPLE
+        Get-ProfileUnityItem -ItemType "server/user" -QueryParameters @{rows=10; page=1}
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('configuration', 'filter', 'portability', 'flexapppackage')]
         [string]$ItemType,
         
-        [string]$Name
+        [string]$Name,
+        
+        [hashtable]$QueryParameters = @{}
     )
     
     try {
-        $response = Invoke-ProfileUnityApi -Endpoint $ItemType
+        # Build query string if parameters provided
+        $queryString = ""
+        if ($QueryParameters.Count -gt 0) {
+            $queryParts = @()
+            foreach ($key in $QueryParameters.Keys) {
+                $queryParts += "$key=$($QueryParameters[$key])"
+            }
+            $queryString = "?" + ($queryParts -join "&")
+        }
+        
+        $endpoint = $ItemType + $queryString
+        $response = Invoke-ProfileUnityApi -Endpoint $endpoint
         
         # Handle different response formats consistently
         $items = if ($response.Tag.Rows) { 
@@ -541,6 +632,3 @@ function Edit-ProfileUnityItem {
 
 # Functions will be exported by main ProfileUnity-PowerTools.psm1 module loader
 # Export-ModuleMember removed to prevent conflicts when dot-sourcing
-
-
-
