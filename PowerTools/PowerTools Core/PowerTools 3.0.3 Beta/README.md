@@ -1,4 +1,4 @@
-# ProfileUnity PowerTools v3.1
+# ProfileUnity PowerTools v3.0.3
 
 A comprehensive PowerShell module for managing ProfileUnity configurations, filters, portability rules, FlexApp packages, ADMX templates, and administrative operations.
 
